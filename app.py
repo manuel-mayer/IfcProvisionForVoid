@@ -16,8 +16,8 @@ st.set_page_config(
 )
 
 def main():
-    st.title("🏗️ IFC File Processor")
-    st.markdown("Upload and manipulate IFC building data files with ease")
+    st.title("🏗️ IFC ProvisionForVoid Tracker")
+    st.markdown("Upload and manipulate IFC ProvisionForVoid data files with ease")
     
     # Initialize session state
     if 'processors' not in st.session_state:
@@ -76,7 +76,7 @@ def main():
         
         # Multiple file upload
         uploaded_files = st.file_uploader(
-            "Choose IFC files from different trades",
+            "Upload IFC files",
             type=['ifc'],
             accept_multiple_files=True,
             help="Upload multiple IFC files to process and track in the same database"
@@ -108,21 +108,21 @@ def main():
             if st.button("📊 Download SQLite Database"):
                 download_database()
             
-            if st.button("📋 Download Excel Spreadsheet"):
+            if st.button("📋 Export Database as Excel"):
                 download_excel_database()
     
     # Main content area
     if not st.session_state.uploaded_files:
         # Welcome screen
-        st.info("👆 Please upload IFC files from different trades to get started")
+        st.info("👆 Please upload IFC files containing ProvisionForVoids to get started")
         
         role_display = "Architect" if st.session_state.user_role == "architect" else "Structural Engineer"
         
         st.markdown("### About this tool")
         st.markdown(f"""
-        This application tracks **{st.session_state.selected_element_type}** objects from multiple IFC building files and manages them with status tracking:
+        This application tracks **{st.session_state.selected_element_type}** objects from multiple IFC files and manages them with status tracking:
         
-        - **Upload multiple IFC files** from different trades containing {st.session_state.selected_element_type} objects
+        - **Upload multiple IFC files** containing {st.session_state.selected_element_type} objects
         - **Track object status** - automatically detects new and deleted objects between file versions
         - **Manage approvals** - track architect and structural engineer approvals based on your role
         - **Cross-trade coordination** - view and manage objects from all trades in one unified database
@@ -134,7 +134,7 @@ def main():
         - You can view: All approvals and object status from all trades
         
         **Key features:**
-        - Multi-file upload support for different trades (structural, MEP, architectural, etc.)
+        - Multi-file upload support
         - Compares new uploads with existing database to detect changes
         - Uses IFC file timestamps for accurate change tracking
         - Maintains object lifecycle with active/deleted status management
@@ -143,9 +143,7 @@ def main():
         
         **Element types supported:**
         - **IfcVirtualElement**: Openings, provisions for voids
-        - **IfcBuildingElementProxy**: Generic building elements, placeholders
-        
-        **File requirements:** IFC files from different trades with the selected element type
+        - **IfcBuildingElementProxy**: Generic building elements, placeholders    
         """)
         
     else:
@@ -573,5 +571,4 @@ def download_excel_database():
 
 if __name__ == "__main__":
     # Run the app with the specified address and port
-    st.run_app("--server.address 0.0.0.0 --server.port 5000")
     main()
