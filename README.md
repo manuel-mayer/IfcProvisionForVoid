@@ -4,20 +4,19 @@ A Streamlit web application for processing and managing IFC (Industry Foundation
 
 ## Features
 
-- **Multi-Trade Support**: Upload and process IFC files from different trades (structural, MEP, architectural, etc.)
+- **Multi-File Support**: Upload and process IFC files from different trades
 - **Element Extraction**: Extract IfcVirtualElement or IfcBuildingElementProxy objects
 - **Change Tracking**: Automatically detect new and deleted objects between file versions
 - **Role-Based Approvals**: Architect and structural engineer approval workflow
 - **Database Management**: SQLite database for persistent object tracking
 - **Export Options**: Export data as Excel, IFC files, or SQLite database
-- **Cross-Trade Coordination**: View and manage objects from all trades in one unified interface
 
 ## Installation
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/YOUR_USERNAME/ifc-file-processor.git
-cd ifc-file-processor
+git clone https://github.com/manuel-mayer/ifcprovisionforvoid.git
+cd ifcprovisionforvoid
 ```
 
 2. Install dependencies using uv:
