@@ -8,9 +8,9 @@ import logging
 class DatabaseManager:
     """Manages SQLite database operations for IFC data"""
     
-    def __init__(self):
-        """Initialize database manager with in-memory database"""
-        self.db_path = ":memory:"
+    def __init__(self, db_path: str = "ifc_database.db"):
+        """Initialize database manager with persistent database"""
+        self.db_path = db_path
         self.connection = None
         self._connect()
     

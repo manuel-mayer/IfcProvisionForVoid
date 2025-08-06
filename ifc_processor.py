@@ -4,6 +4,7 @@ import tempfile
 import os
 from typing import Optional, Dict, Any
 import logging
+from datetime import datetime
 
 class IFCProcessor:
     """Handles IFC file processing and database operations"""
@@ -25,34 +26,125 @@ class IFCProcessor:
             raise Exception(f"Cannot open IFC file: {str(e)}")
     
     def load_ifc_to_database(self, db_manager) -> bool:
-        """Extract IFC data and load it into SQLite database"""
+        """Extract IFC data and load it into SQLite database using your specific workflow"""
         try:
             if not self.ifc_model:
                 return False
             
-            # Get all entities in the IFC file
-            all_entities = self.ifc_model.by_type("IfcRoot")
+            # Create the main tracking table based on your schema
+            self._create_ifc_objects_table(db_manager)
             
-            if not all_entities:
-                logging.warning("No IfcRoot entities found in the IFC file")
-                return False
+            # Extract IFC filename and creation date
+            ifc_filename = os.path.basename(self.ifc_file_path)
+            ifc_creation_date = self._extract_creation_date()
             
-            # Group entities by type
-            entity_groups = {}
-            for entity in all_entities:
-                entity_type = entity.is_a()
-                if entity_type not in entity_groups:
-                    entity_groups[entity_type] = []
-                entity_groups[entity_type].append(entity)
+            # Extract IfcVirtualElement objects (as per your code)
+            virtual_elements = self.ifc_model.by_type("IfcVirtualElement")
             
-            # Process each entity type
-            for entity_type, entities in entity_groups.items():
-                self._process_entity_group(entity_type, entities, db_manager)
+            if not virtual_elements:
+                logging.warning("No IfcVirtualElement found in the IFC file")
+                # Still create empty tables for consistency
+                return True
             
-            return True
+            # Process the virtual elements using your workflow
+            return self._process_virtual_elements(virtual_elements, ifc_filename, ifc_creation_date, db_manager)
         
         except Exception as e:
             logging.error(f"Error loading IFC to database: {str(e)}")
+            return False
+    
+    def _create_ifc_objects_table(self, db_manager):
+        """Create the ifc_objects table as per your schema"""
+        try:
+            connection = db_manager.connection
+            cursor = connection.cursor()
+            
+            cursor.execute('''CREATE TABLE IF NOT EXISTS ifc_objects
+                             (guid TEXT, filename TEXT, added_timestamp TEXT, status TEXT DEFAULT 'active',
+                              approval_architect BOOLEAN DEFAULT FALSE, approval_structure BOOLEAN DEFAULT FALSE,
+                              deletion_date TEXT)''')
+            connection.commit()
+            logging.info("Created ifc_objects table")
+        except Exception as e:
+            logging.error(f"Error creating ifc_objects table: {str(e)}")
+    
+    def _extract_creation_date(self) -> Optional[str]:
+        """Extract creation date from IFC FILE_NAME header"""
+        try:
+            ifc_header = self.ifc_model.header
+            if ifc_header and hasattr(ifc_header, 'file_name') and hasattr(ifc_header.file_name, 'time_stamp'):
+                timestamp_str = str(ifc_header.file_name.time_stamp)
+                try:
+                    # Parse various datetime formats, handle timezone info
+                    datetime_part = timestamp_str.split('+')[0].split('.')[0]
+                    timestamp_obj = datetime.strptime(datetime_part, '%Y-%m-%dT%H:%M:%S')
+                    creation_date = timestamp_obj.strftime('%y%m%d')
+                    logging.info(f"Found creation date in FILE_NAME header: {creation_date}")
+                    return creation_date
+                except ValueError:
+                    logging.warning(f"Could not parse timestamp format from FILE_NAME: {timestamp_str}")
+                    return None
+            else:
+                logging.warning("FILE_NAME header or time_stamp not found")
+                return None
+        except Exception as e:
+            logging.error(f"Error extracting creation date: {str(e)}")
+            return None
+    
+    def _process_virtual_elements(self, virtual_elements, ifc_filename, ifc_creation_date, db_manager) -> bool:
+        """Process IfcVirtualElement objects using your workflow"""
+        try:
+            connection = db_manager.connection
+            cursor = connection.cursor()
+            
+            # Extract data from virtual elements
+            updated_extracted_data = []
+            for element in virtual_elements:
+                updated_extracted_data.append((element.GlobalId, ifc_filename))
+            
+            # Create set of GUIDs for efficient lookup
+            updated_guids = set([item[0] for item in updated_extracted_data])
+            
+            # Query existing data from database
+            existing_data = {}
+            cursor.execute("SELECT guid, status FROM ifc_objects WHERE filename = ?", (ifc_filename,))
+            for row in cursor.fetchall():
+                existing_data[row[0]] = row[1]
+            
+            logging.info(f"Found {len(existing_data)} existing objects in database for filename '{ifc_filename}'")
+            
+            # Mark deleted objects
+            if existing_data:
+                deleted_guids = []
+                deletion_timestamp = ifc_creation_date if ifc_creation_date else datetime.now().strftime('%y%m%d')
+                
+                for guid, status in existing_data.items():
+                    if guid not in updated_guids and status == 'active':
+                        deleted_guids.append(guid)
+                
+                if deleted_guids:
+                    cursor.executemany('UPDATE ifc_objects SET status = "deleted", deletion_date = ? WHERE guid = ?', 
+                                     [(deletion_timestamp, guid) for guid in deleted_guids])
+                    logging.info(f"Marked {len(deleted_guids)} objects as 'deleted'")
+            
+            # Add new objects
+            existing_guids_set = set(existing_data.keys())
+            new_objects_to_add = []
+            added_timestamp = ifc_creation_date if ifc_creation_date else datetime.now().strftime('%y%m%d')
+            
+            for guid, filename in updated_extracted_data:
+                if guid not in existing_guids_set:
+                    new_objects_to_add.append((guid, filename, added_timestamp, 'active', False, False, None))
+            
+            if new_objects_to_add:
+                cursor.executemany('INSERT INTO ifc_objects VALUES (?,?,?,?,?,?,?)', new_objects_to_add)
+                logging.info(f"Added {len(new_objects_to_add)} new objects to database")
+            
+            connection.commit()
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error processing virtual elements: {str(e)}")
             return False
     
     def _process_entity_group(self, entity_type: str, entities: list, db_manager):

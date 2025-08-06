@@ -63,13 +63,20 @@ def main():
         
         st.markdown("### About this tool")
         st.markdown("""
-        This application allows you to:
-        - **Upload IFC files** and parse their structure
-        - **View building data** in organized tables
-        - **Edit properties** of building elements
-        - **Export modified files** back to IFC format
+        This application tracks **IfcVirtualElement** objects from IFC building files and manages them with status tracking:
         
-        **Supported file format:** IFC (Industry Foundation Classes)
+        - **Upload IFC files** containing IfcVirtualElement objects (like openings, provisions for voids)
+        - **Track object status** - automatically detects new and deleted objects between file versions
+        - **Manage approvals** - track architect and structural engineer approvals
+        - **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
+        - **Export database** - download the complete tracking database
+        
+        **Key features:**
+        - Compares new uploads with existing database to detect changes
+        - Uses IFC file timestamps for accurate change tracking
+        - Maintains object lifecycle with active/deleted status management
+        
+        **File requirements:** IFC files with IfcVirtualElement objects
         """)
         
     else:
@@ -121,24 +128,139 @@ def display_file_interface():
         if st.button("🔄 Refresh Data"):
             st.rerun()
     
-    # Get available tables
-    tables = st.session_state.db_manager.get_tables()
+    # Show IFC Objects table (main table from your workflow)
+    st.markdown("### IFC Virtual Elements Database")
+    st.markdown("This table tracks IfcVirtualElement objects from your IFC files with status management.")
     
-    if not tables:
-        st.warning("No data tables found in the processed file.")
-        return
+    # Get the main ifc_objects table
+    try:
+        df = st.session_state.db_manager.get_table_data('ifc_objects')
+        
+        if df.empty:
+            st.info("No IFC objects found. Make sure your IFC file contains IfcVirtualElement objects.")
+        else:
+            # Display summary statistics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                active_count = len(df[df['status'] == 'active']) if 'status' in df.columns else len(df)
+                st.metric("Active Objects", active_count)
+            with col2:
+                deleted_count = len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0
+                st.metric("Deleted Objects", deleted_count)
+            with col3:
+                total_files = df['filename'].nunique() if 'filename' in df.columns else 1
+                st.metric("IFC Files", total_files)
+            with col4:
+                st.metric("Total Records", len(df))
+            
+            # Display the table
+            display_ifc_objects_table(df)
+            
+    except Exception as e:
+        st.error(f"Error loading IFC objects: {str(e)}")
+        # Fallback to show available tables
+        tables = st.session_state.db_manager.get_tables()
+        if tables:
+            st.markdown("### Available Tables")
+            selected_table = st.selectbox("Choose a table:", options=tables)
+            if selected_table:
+                display_table_data(selected_table)
+
+def display_ifc_objects_table(df):
+    """Display and allow editing of the main ifc_objects table"""
+    try:
+        st.markdown("#### Edit Object Status and Approvals")
+        st.markdown("You can edit the status and approval columns directly in the table below.")
+        
+        # Filter options
+        with st.expander("🔍 Filter Options"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                # Status filter
+                status_options = ['All'] + list(df['status'].unique()) if 'status' in df.columns else ['All']
+                selected_status = st.selectbox("Filter by Status:", status_options)
+                
+            with col2:
+                # Filename filter
+                filename_options = ['All'] + list(df['filename'].unique()) if 'filename' in df.columns else ['All']
+                selected_filename = st.selectbox("Filter by File:", filename_options)
+                
+            with col3:
+                # Date range
+                if 'added_timestamp' in df.columns:
+                    show_date_filter = st.checkbox("Filter by Date Range")
+        
+        # Apply filters
+        filtered_df = df.copy()
+        
+        if selected_status != 'All' and 'status' in df.columns:
+            filtered_df = filtered_df[filtered_df['status'] == selected_status]
+        
+        if selected_filename != 'All' and 'filename' in df.columns:
+            filtered_df = filtered_df[filtered_df['filename'] == selected_filename]
+        
+        # Display filtered data
+        if not filtered_df.empty:
+            # Make approval columns editable, guid read-only
+            column_config = {}
+            disabled_cols = ['guid']  # GUID should not be editable
+            
+            if 'approval_architect' in filtered_df.columns:
+                column_config['approval_architect'] = st.column_config.CheckboxColumn(
+                    "Architect Approval",
+                    help="Toggle architect approval for this object"
+                )
+            
+            if 'approval_structure' in filtered_df.columns:
+                column_config['approval_structure'] = st.column_config.CheckboxColumn(
+                    "Structure Approval", 
+                    help="Toggle structural engineer approval for this object"
+                )
+            
+            if 'status' in filtered_df.columns:
+                column_config['status'] = st.column_config.SelectboxColumn(
+                    "Status",
+                    options=['active', 'deleted'],
+                    help="Object status"
+                )
+            
+            # Data editor
+            edited_df = st.data_editor(
+                filtered_df,
+                use_container_width=True,
+                disabled=disabled_cols,
+                column_config=column_config,
+                hide_index=True,
+                key="ifc_objects_editor"
+            )
+            
+            # Save changes button
+            if st.button("💾 Save Changes to Database", type="primary"):
+                save_ifc_objects_changes(edited_df)
+            
+            # Show record count
+            st.caption(f"Showing {len(filtered_df)} of {len(df)} total records")
+            
+        else:
+            st.info("No records match the current filters.")
+            
+    except Exception as e:
+        st.error(f"Error displaying IFC objects table: {str(e)}")
+
+def save_ifc_objects_changes(edited_df):
+    """Save changes to the ifc_objects table"""
+    try:
+        with st.spinner("Saving changes to database..."):
+            success = st.session_state.db_manager.update_table_data('ifc_objects', edited_df)
+            
+            if success:
+                st.success("✅ Changes saved successfully!")
+            else:
+                st.error("❌ Failed to save changes")
     
-    # Table selection
-    st.markdown("### Select Data to View/Edit")
-    selected_table = st.selectbox(
-        "Choose a data table:",
-        options=tables,
-        help="Select which type of building data you want to view or edit"
-    )
-    
-    if selected_table:
-        st.session_state.current_table = selected_table
-        display_table_data(selected_table)
+    except Exception as e:
+        st.error(f"Error saving changes: {str(e)}")
 
 def display_table_data(table_name):
     """Display and allow editing of table data"""
