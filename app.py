@@ -66,10 +66,11 @@ def main():
         # Update session state if changed
         if element_type != st.session_state.selected_element_type:
             st.session_state.selected_element_type = element_type
-            # Clear processor to force reprocessing with new element type
-            if st.session_state.processor is not None:
-                st.session_state.processor = None
-                st.info("Element type changed. Please re-upload your file to process with the new element type.")
+            # Clear processors to force reprocessing with new element type
+            if st.session_state.uploaded_files:
+                st.session_state.processors = {}
+                st.session_state.uploaded_files = []
+                st.info("Element type changed. Please re-upload your files to process with the new element type.")
         
         st.markdown("---")
         
