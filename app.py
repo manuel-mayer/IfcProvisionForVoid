@@ -83,7 +83,7 @@ def main():
         if uploaded_file is not None:
             if st.session_state.uploaded_file_name != uploaded_file.name:
                 st.session_state.uploaded_file_name = uploaded_file.name
-                process_uploaded_file(uploaded_file)
+                process_uploaded_file(uploaded_file, uploaded_file.name)
         
         # File download section
         if st.session_state.processor is not None:
@@ -134,7 +134,7 @@ def main():
         # Show file processing interface
         display_file_interface()
 
-def process_uploaded_file(uploaded_file):
+def process_uploaded_file(uploaded_file, original_filename):
     """Process the uploaded IFC file"""
     try:
         with st.spinner("Processing IFC file..."):
@@ -147,10 +147,11 @@ def process_uploaded_file(uploaded_file):
             st.session_state.processor = IFCProcessor(tmp_file_path)
             st.session_state.db_manager = DatabaseManager()
             
-            # Process the file with selected element type
+            # Process the file with selected element type and original filename
             success = st.session_state.processor.load_ifc_to_database(
                 st.session_state.db_manager, 
-                st.session_state.selected_element_type
+                st.session_state.selected_element_type,
+                original_filename
             )
             
             if success:

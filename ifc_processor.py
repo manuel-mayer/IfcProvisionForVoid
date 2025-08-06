@@ -25,7 +25,7 @@ class IFCProcessor:
             logging.error(f"Failed to load IFC model: {str(e)}")
             raise Exception(f"Cannot open IFC file: {str(e)}")
     
-    def load_ifc_to_database(self, db_manager, element_type: str = "IfcVirtualElement") -> bool:
+    def load_ifc_to_database(self, db_manager, element_type: str = "IfcVirtualElement", original_filename: str = None) -> bool:
         """Extract IFC data and load it into SQLite database using your specific workflow"""
         try:
             if not self.ifc_model:
@@ -34,8 +34,12 @@ class IFCProcessor:
             # Create the main tracking table based on your schema
             self._create_ifc_objects_table(db_manager)
             
-            # Extract IFC filename and creation date
-            ifc_filename = os.path.basename(self.ifc_file_path)
+            # Use the original filename if provided, otherwise extract from path
+            if original_filename:
+                ifc_filename = original_filename
+            else:
+                ifc_filename = os.path.basename(self.ifc_file_path)
+            
             ifc_creation_date = self._extract_creation_date()
             
             # Extract elements of the specified type
