@@ -30,10 +30,17 @@ Preferred communication style: Simple, everyday language.
 - **Timestamp Tracking**: Uses IFC file creation timestamps for accurate change tracking
 
 ### Data Storage
-- **Database**: SQLite in-memory database for temporary data storage during session
-- **Design Choice**: In-memory storage chosen for simplicity and to avoid file system dependencies
-- **Data Structure**: Tables created dynamically based on IFC entity types and properties
+- **Database**: SQLite persistent database for tracking across sessions
+- **Main Table**: ifc_objects table with GUID, filename, timestamps, status, and approval columns
+- **Design Choice**: Persistent storage to maintain object tracking between file uploads
+- **Data Structure**: Structured tracking table for object lifecycle and approval management
 - **Column Safety**: Implements table and column name sanitization for SQL injection prevention
+
+### User Role Management
+- **Role Selection**: Users choose between architect and structural engineer roles
+- **Approval Permissions**: Role-based editing permissions for approval columns
+- **Access Control**: Users can only edit approvals matching their professional role
+- **Visual Indicators**: Interface shows which approvals users can edit based on their role
 
 ### Error Handling and Logging
 - **Logging**: Comprehensive logging throughout the application for debugging and monitoring

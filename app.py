@@ -30,10 +30,29 @@ def main():
         st.session_state.current_table = None
     if 'selected_element_type' not in st.session_state:
         st.session_state.selected_element_type = 'IfcVirtualElement'
+    if 'user_role' not in st.session_state:
+        st.session_state.user_role = 'architect'
     
     # Sidebar for file operations
     with st.sidebar:
         st.header("File Operations")
+        
+        # User role selection
+        st.subheader("👤 User Profile")
+        user_role = st.selectbox(
+            "Select your role:",
+            options=["architect", "structural_engineer"],
+            index=0 if st.session_state.user_role == "architect" else 1,
+            format_func=lambda x: "Architect" if x == "architect" else "Structural Engineer",
+            help="Your role determines which approvals you can set in the database"
+        )
+        
+        # Update user role in session state
+        if user_role != st.session_state.user_role:
+            st.session_state.user_role = user_role
+            st.success(f"Role changed to: {'Architect' if user_role == 'architect' else 'Structural Engineer'}")
+        
+        st.markdown("---")
         
         # Element type selection
         st.subheader("🔧 Processing Options")
@@ -82,20 +101,27 @@ def main():
         # Welcome screen
         st.info("👆 Please upload an IFC file to get started")
         
+        role_display = "Architect" if st.session_state.user_role == "architect" else "Structural Engineer"
+        
         st.markdown("### About this tool")
         st.markdown(f"""
         This application tracks **{st.session_state.selected_element_type}** objects from IFC building files and manages them with status tracking:
         
         - **Upload IFC files** containing {st.session_state.selected_element_type} objects
         - **Track object status** - automatically detects new and deleted objects between file versions
-        - **Manage approvals** - track architect and structural engineer approvals
+        - **Manage approvals** - track architect and structural engineer approvals based on your role
         - **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
         - **Export database** - download the complete tracking database
+        
+        **Your role: {role_display}**
+        - You can edit: {'Architect' if st.session_state.user_role == 'architect' else 'Structural Engineer'} approvals
+        - You can view: All approvals and object status
         
         **Key features:**
         - Compares new uploads with existing database to detect changes
         - Uses IFC file timestamps for accurate change tracking
         - Maintains object lifecycle with active/deleted status management
+        - Role-based approval system for proper workflow management
         
         **Element types supported:**
         - **IfcVirtualElement**: Openings, provisions for voids
@@ -169,7 +195,7 @@ def display_file_interface():
             st.info(f"No IFC objects found. Make sure your IFC file contains {element_type} objects.")
         else:
             # Display summary statistics
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
             with col1:
                 active_count = len(df[df['status'] == 'active']) if 'status' in df.columns else len(df)
                 st.metric("Active Objects", active_count)
@@ -181,6 +207,18 @@ def display_file_interface():
                 st.metric("IFC Files", total_files)
             with col4:
                 st.metric("Total Records", len(df))
+            with col5:
+                if 'approval_architect' in df.columns:
+                    arch_approved = len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0
+                    st.metric("Architect Approved", arch_approved)
+                else:
+                    st.metric("Architect Approved", "N/A")
+            with col6:
+                if 'approval_structure' in df.columns:
+                    struct_approved = len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0
+                    st.metric("Structure Approved", struct_approved)
+                else:
+                    st.metric("Structure Approved", "N/A")
             
             # Display the table
             display_ifc_objects_table(df)
@@ -231,27 +269,46 @@ def display_ifc_objects_table(df):
         
         # Display filtered data
         if not filtered_df.empty:
-            # Make approval columns editable, guid read-only
+            # Configure columns based on user role
             column_config = {}
             disabled_cols = ['guid']  # GUID should not be editable
+            user_role = st.session_state.user_role
+            
+            # Show role-based info
+            role_display = "Architect" if user_role == "architect" else "Structural Engineer"
+            st.info(f"👤 Logged in as: **{role_display}** - You can edit {role_display.lower()} approvals")
             
             if 'approval_architect' in filtered_df.columns:
-                column_config['approval_architect'] = st.column_config.CheckboxColumn(
-                    "Architect Approval",
-                    help="Toggle architect approval for this object"
-                )
+                if user_role == 'architect':
+                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
+                        "Architect Approval ✓",
+                        help="Toggle architect approval (you can edit this)"
+                    )
+                else:
+                    disabled_cols.append('approval_architect')
+                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
+                        "Architect Approval (read-only)",
+                        help="Only architects can edit this approval"
+                    )
             
             if 'approval_structure' in filtered_df.columns:
-                column_config['approval_structure'] = st.column_config.CheckboxColumn(
-                    "Structure Approval", 
-                    help="Toggle structural engineer approval for this object"
-                )
+                if user_role == 'structural_engineer':
+                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
+                        "Structural Approval ✓", 
+                        help="Toggle structural engineer approval (you can edit this)"
+                    )
+                else:
+                    disabled_cols.append('approval_structure')
+                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
+                        "Structural Approval (read-only)",
+                        help="Only structural engineers can edit this approval"
+                    )
             
             if 'status' in filtered_df.columns:
                 column_config['status'] = st.column_config.SelectboxColumn(
                     "Status",
                     options=['active', 'deleted'],
-                    help="Object status"
+                    help="Object status (all users can edit)"
                 )
             
             # Data editor
