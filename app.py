@@ -20,12 +20,12 @@ def main():
     st.markdown("Upload and manipulate IFC building data files with ease")
     
     # Initialize session state
-    if 'processor' not in st.session_state:
-        st.session_state.processor = None
+    if 'processors' not in st.session_state:
+        st.session_state.processors = {}  # Dictionary to store multiple processors
     if 'db_manager' not in st.session_state:
-        st.session_state.db_manager = None
-    if 'uploaded_file_name' not in st.session_state:
-        st.session_state.uploaded_file_name = None
+        st.session_state.db_manager = DatabaseManager()  # Initialize once
+    if 'uploaded_files' not in st.session_state:
+        st.session_state.uploaded_files = []  # List of uploaded filenames
     if 'current_table' not in st.session_state:
         st.session_state.current_table = None
     if 'selected_element_type' not in st.session_state:
@@ -73,25 +73,36 @@ def main():
         
         st.markdown("---")
         
-        # File upload
-        uploaded_file = st.file_uploader(
-            "Choose an IFC file",
+        # Multiple file upload
+        uploaded_files = st.file_uploader(
+            "Choose IFC files from different trades",
             type=['ifc'],
-            help="Upload an IFC file to process"
+            accept_multiple_files=True,
+            help="Upload multiple IFC files to process and track in the same database"
         )
         
-        if uploaded_file is not None:
-            if st.session_state.uploaded_file_name != uploaded_file.name:
-                st.session_state.uploaded_file_name = uploaded_file.name
-                process_uploaded_file(uploaded_file, uploaded_file.name)
+        if uploaded_files:
+            # Process new files
+            for uploaded_file in uploaded_files:
+                if uploaded_file.name not in st.session_state.uploaded_files:
+                    st.session_state.uploaded_files.append(uploaded_file.name)
+                    process_uploaded_file(uploaded_file, uploaded_file.name)
+            
+            # Display uploaded files
+            st.markdown("**Uploaded Files:**")
+            for filename in st.session_state.uploaded_files:
+                st.markdown(f"• {filename}")
+                
+            # Add clear all files button
+            if st.button("🗑️ Clear All Files"):
+                st.session_state.uploaded_files = []
+                st.session_state.processors = {}
+                st.rerun()
         
         # File download section
-        if st.session_state.processor is not None:
+        if st.session_state.uploaded_files:
             st.markdown("---")
             st.subheader("Export")
-            
-            if st.button("📥 Download Modified IFC", type="primary"):
-                download_modified_ifc()
             
             if st.button("📊 Download SQLite Database"):
                 download_database()
@@ -100,37 +111,40 @@ def main():
                 download_excel_database()
     
     # Main content area
-    if st.session_state.processor is None:
+    if not st.session_state.uploaded_files:
         # Welcome screen
-        st.info("👆 Please upload an IFC file to get started")
+        st.info("👆 Please upload IFC files from different trades to get started")
         
         role_display = "Architect" if st.session_state.user_role == "architect" else "Structural Engineer"
         
         st.markdown("### About this tool")
         st.markdown(f"""
-        This application tracks **{st.session_state.selected_element_type}** objects from IFC building files and manages them with status tracking:
+        This application tracks **{st.session_state.selected_element_type}** objects from multiple IFC building files and manages them with status tracking:
         
-        - **Upload IFC files** containing {st.session_state.selected_element_type} objects
+        - **Upload multiple IFC files** from different trades containing {st.session_state.selected_element_type} objects
         - **Track object status** - automatically detects new and deleted objects between file versions
         - **Manage approvals** - track architect and structural engineer approvals based on your role
+        - **Cross-trade coordination** - view and manage objects from all trades in one unified database
         - **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
-        - **Export database** - download the complete tracking database
+        - **Export database** - download the complete tracking database with all trades
         
         **Your role: {role_display}**
         - You can edit: {'Architect' if st.session_state.user_role == 'architect' else 'Structural Engineer'} approvals
-        - You can view: All approvals and object status
+        - You can view: All approvals and object status from all trades
         
         **Key features:**
+        - Multi-file upload support for different trades (structural, MEP, architectural, etc.)
         - Compares new uploads with existing database to detect changes
         - Uses IFC file timestamps for accurate change tracking
         - Maintains object lifecycle with active/deleted status management
         - Role-based approval system for proper workflow management
+        - Unified database tracking across multiple IFC files
         
         **Element types supported:**
         - **IfcVirtualElement**: Openings, provisions for voids
         - **IfcBuildingElementProxy**: Generic building elements, placeholders
         
-        **File requirements:** IFC files with the selected element type
+        **File requirements:** IFC files from different trades with the selected element type
         """)
         
     else:
@@ -146,32 +160,30 @@ def process_uploaded_file(uploaded_file, original_filename):
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file_path = tmp_file.name
             
-            # Initialize processor and database manager
-            st.session_state.processor = IFCProcessor(tmp_file_path)
-            st.session_state.db_manager = DatabaseManager()
+            # Initialize processor for this file
+            processor = IFCProcessor(tmp_file_path)
             
             # Process the file with selected element type and original filename
-            success = st.session_state.processor.load_ifc_to_database(
+            success = processor.load_ifc_to_database(
                 st.session_state.db_manager, 
                 st.session_state.selected_element_type,
                 original_filename
             )
             
+            # Store processor for this file
+            if success:
+                st.session_state.processors[original_filename] = processor
+            
             if success:
                 st.success(f"✅ Successfully processed '{uploaded_file.name}'")
-                st.rerun()
             else:
-                st.error("❌ Failed to process the IFC file")
-                st.session_state.processor = None
-                st.session_state.db_manager = None
+                st.error(f"❌ Failed to process '{uploaded_file.name}'")
             
             # Clean up temporary file
             os.unlink(tmp_file_path)
             
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
-        st.session_state.processor = None
-        st.session_state.db_manager = None
 
 def display_file_interface():
     """Display the main interface for file manipulation"""
@@ -180,7 +192,7 @@ def display_file_interface():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.subheader(f"📄 {st.session_state.uploaded_file_name}")
+        st.subheader(f"📄 Multi-Trade IFC Database ({len(st.session_state.uploaded_files)} files)")
     
     with col2:
         if st.button("🔄 Refresh Data"):
