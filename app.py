@@ -572,4 +572,6 @@ def download_excel_database():
         st.error(f"Error creating Excel file: {str(e)}")
 
 if __name__ == "__main__":
+    # Run the app with the specified address and port
+    st.run_app("--server.address 0.0.0.0 --server.port 5000")
     main()
