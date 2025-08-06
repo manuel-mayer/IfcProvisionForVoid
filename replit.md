@@ -24,9 +24,10 @@ Preferred communication style: Simple, everyday language.
 
 ### Data Processing Pipeline
 - **IFC File Handling**: Uses ifcopenshell library for parsing IFC building data files
-- **Data Extraction**: Extracts building entities and their properties from IFC models
-- **Entity Grouping**: Groups IFC entities by type for organized data storage
-- **Table Creation**: Dynamically creates database tables based on IFC entity types
+- **Element Type Selection**: Users can choose between IfcVirtualElement and IfcBuildingElementProxy objects
+- **Data Extraction**: Extracts selected element types and tracks them with status management
+- **Change Detection**: Compares new uploads with existing database to identify new and deleted objects
+- **Timestamp Tracking**: Uses IFC file creation timestamps for accurate change tracking
 
 ### Data Storage
 - **Database**: SQLite in-memory database for temporary data storage during session

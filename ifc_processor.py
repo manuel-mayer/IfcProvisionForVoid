@@ -25,7 +25,7 @@ class IFCProcessor:
             logging.error(f"Failed to load IFC model: {str(e)}")
             raise Exception(f"Cannot open IFC file: {str(e)}")
     
-    def load_ifc_to_database(self, db_manager) -> bool:
+    def load_ifc_to_database(self, db_manager, element_type: str = "IfcVirtualElement") -> bool:
         """Extract IFC data and load it into SQLite database using your specific workflow"""
         try:
             if not self.ifc_model:
@@ -38,16 +38,16 @@ class IFCProcessor:
             ifc_filename = os.path.basename(self.ifc_file_path)
             ifc_creation_date = self._extract_creation_date()
             
-            # Extract IfcVirtualElement objects (as per your code)
-            virtual_elements = self.ifc_model.by_type("IfcVirtualElement")
+            # Extract elements of the specified type
+            elements = self.ifc_model.by_type(element_type)
             
-            if not virtual_elements:
-                logging.warning("No IfcVirtualElement found in the IFC file")
+            if not elements:
+                logging.warning(f"No {element_type} found in the IFC file")
                 # Still create empty tables for consistency
                 return True
             
-            # Process the virtual elements using your workflow
-            return self._process_virtual_elements(virtual_elements, ifc_filename, ifc_creation_date, db_manager)
+            # Process the elements using your workflow
+            return self._process_elements(elements, ifc_filename, ifc_creation_date, db_manager, element_type)
         
         except Exception as e:
             logging.error(f"Error loading IFC to database: {str(e)}")
@@ -91,15 +91,15 @@ class IFCProcessor:
             logging.error(f"Error extracting creation date: {str(e)}")
             return None
     
-    def _process_virtual_elements(self, virtual_elements, ifc_filename, ifc_creation_date, db_manager) -> bool:
-        """Process IfcVirtualElement objects using your workflow"""
+    def _process_elements(self, elements, ifc_filename, ifc_creation_date, db_manager, element_type: str) -> bool:
+        """Process IFC elements using your workflow"""
         try:
             connection = db_manager.connection
             cursor = connection.cursor()
             
-            # Extract data from virtual elements
+            # Extract data from elements
             updated_extracted_data = []
-            for element in virtual_elements:
+            for element in elements:
                 updated_extracted_data.append((element.GlobalId, ifc_filename))
             
             # Create set of GUIDs for efficient lookup

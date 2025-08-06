@@ -28,10 +28,31 @@ def main():
         st.session_state.uploaded_file_name = None
     if 'current_table' not in st.session_state:
         st.session_state.current_table = None
+    if 'selected_element_type' not in st.session_state:
+        st.session_state.selected_element_type = 'IfcVirtualElement'
     
     # Sidebar for file operations
     with st.sidebar:
         st.header("File Operations")
+        
+        # Element type selection
+        st.subheader("🔧 Processing Options")
+        element_type = st.selectbox(
+            "Choose element type to extract:",
+            options=["IfcVirtualElement", "IfcBuildingElementProxy"],
+            index=0 if st.session_state.selected_element_type == "IfcVirtualElement" else 1,
+            help="Select which type of IFC elements to track in the database"
+        )
+        
+        # Update session state if changed
+        if element_type != st.session_state.selected_element_type:
+            st.session_state.selected_element_type = element_type
+            # Clear processor to force reprocessing with new element type
+            if st.session_state.processor is not None:
+                st.session_state.processor = None
+                st.info("Element type changed. Please re-upload your file to process with the new element type.")
+        
+        st.markdown("---")
         
         # File upload
         uploaded_file = st.file_uploader(
@@ -62,10 +83,10 @@ def main():
         st.info("👆 Please upload an IFC file to get started")
         
         st.markdown("### About this tool")
-        st.markdown("""
-        This application tracks **IfcVirtualElement** objects from IFC building files and manages them with status tracking:
+        st.markdown(f"""
+        This application tracks **{st.session_state.selected_element_type}** objects from IFC building files and manages them with status tracking:
         
-        - **Upload IFC files** containing IfcVirtualElement objects (like openings, provisions for voids)
+        - **Upload IFC files** containing {st.session_state.selected_element_type} objects
         - **Track object status** - automatically detects new and deleted objects between file versions
         - **Manage approvals** - track architect and structural engineer approvals
         - **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
@@ -76,7 +97,11 @@ def main():
         - Uses IFC file timestamps for accurate change tracking
         - Maintains object lifecycle with active/deleted status management
         
-        **File requirements:** IFC files with IfcVirtualElement objects
+        **Element types supported:**
+        - **IfcVirtualElement**: Openings, provisions for voids
+        - **IfcBuildingElementProxy**: Generic building elements, placeholders
+        
+        **File requirements:** IFC files with the selected element type
         """)
         
     else:
@@ -96,8 +121,11 @@ def process_uploaded_file(uploaded_file):
             st.session_state.processor = IFCProcessor(tmp_file_path)
             st.session_state.db_manager = DatabaseManager()
             
-            # Process the file
-            success = st.session_state.processor.load_ifc_to_database(st.session_state.db_manager)
+            # Process the file with selected element type
+            success = st.session_state.processor.load_ifc_to_database(
+                st.session_state.db_manager, 
+                st.session_state.selected_element_type
+            )
             
             if success:
                 st.success(f"✅ Successfully processed '{uploaded_file.name}'")
@@ -129,15 +157,16 @@ def display_file_interface():
             st.rerun()
     
     # Show IFC Objects table (main table from your workflow)
-    st.markdown("### IFC Virtual Elements Database")
-    st.markdown("This table tracks IfcVirtualElement objects from your IFC files with status management.")
+    element_type = st.session_state.selected_element_type
+    st.markdown(f"### IFC {element_type} Database")
+    st.markdown(f"This table tracks **{element_type}** objects from your IFC files with status management.")
     
     # Get the main ifc_objects table
     try:
         df = st.session_state.db_manager.get_table_data('ifc_objects')
         
         if df.empty:
-            st.info("No IFC objects found. Make sure your IFC file contains IfcVirtualElement objects.")
+            st.info(f"No IFC objects found. Make sure your IFC file contains {element_type} objects.")
         else:
             # Display summary statistics
             col1, col2, col3, col4 = st.columns(4)
