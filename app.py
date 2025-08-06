@@ -95,6 +95,9 @@ def main():
             
             if st.button("📊 Download SQLite Database"):
                 download_database()
+            
+            if st.button("📋 Download Excel Spreadsheet"):
+                download_excel_database()
     
     # Main content area
     if st.session_state.processor is None:
@@ -482,6 +485,78 @@ def download_database():
     
     except Exception as e:
         st.error(f"Error preparing database download: {str(e)}")
+
+def download_excel_database():
+    """Export database to Excel and provide download link"""
+    try:
+        with st.spinner("Converting database to Excel format..."):
+            # Get the ifc_objects data
+            df = st.session_state.db_manager.get_table_data('ifc_objects')
+            
+            if df.empty:
+                st.warning("No data found in database to export")
+                return
+            
+            # Create Excel file in memory
+            from io import BytesIO
+            excel_buffer = BytesIO()
+            
+            # Write DataFrame to Excel
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='IFC_Objects', index=False)
+                
+                # Get the workbook and worksheet
+                workbook = writer.book
+                worksheet = writer.sheets['IFC_Objects']
+                
+                # Auto-adjust column widths
+                for column in worksheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    worksheet.column_dimensions[column_letter].width = adjusted_width
+                
+                # Add a summary sheet with statistics
+                summary_data = {
+                    'Metric': ['Total Objects', 'Active Objects', 'Deleted Objects', 
+                              'Architect Approved', 'Structure Approved', 'IFC Files'],
+                    'Count': [
+                        len(df),
+                        len(df[df['status'] == 'active']) if 'status' in df.columns else len(df),
+                        len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0,
+                        len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0,
+                        len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0,
+                        df['filename'].nunique() if 'filename' in df.columns else 1
+                    ]
+                }
+                summary_df = pd.DataFrame(summary_data)
+                summary_df.to_excel(writer, sheet_name='Summary', index=False)
+            
+            excel_buffer.seek(0)
+            
+            # Generate filename based on current timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"IFC_Database_{timestamp}.xlsx"
+            
+            st.download_button(
+                label="📋 Download Excel File",
+                data=excel_buffer.getvalue(),
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download the database as an Excel spreadsheet for easy review"
+            )
+            
+            st.success(f"✅ Excel file ready for download ({len(df)} records)")
+    
+    except Exception as e:
+        st.error(f"Error creating Excel file: {str(e)}")
 
 if __name__ == "__main__":
     main()
