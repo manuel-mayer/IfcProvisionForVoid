@@ -66,37 +66,10 @@ def main():
                 st.session_state.uploaded_files = []
                 st.info("Element type changed. Please re-upload your files to process with the new element type.")
         
-        st.markdown("---")
-        
-        # Multiple file upload
-        uploaded_files = st.file_uploader(
-            "📂 Upload IFC files",
-            type=['ifc'],
-            accept_multiple_files=True,
-            help="Upload multiple IFC files to process and track in the same database"
-        )
-        
-        if uploaded_files:
-            # Process new files
-            for uploaded_file in uploaded_files:
-                if uploaded_file.name not in st.session_state.uploaded_files:
-                    st.session_state.uploaded_files.append(uploaded_file.name)
-                    process_uploaded_file(uploaded_file, uploaded_file.name)
-            
-            # Display uploaded files
-            st.markdown("**Uploaded Files:**")
-            for filename in st.session_state.uploaded_files:
-                st.markdown(f"• {filename}")
-                
-            # Add clear all files button
-            if st.button("🗑️ Clear All Files"):
-                st.session_state.uploaded_files = []
-                st.session_state.processors = {}
-                st.rerun()
 
         # Upload existing database file section (no divider)
         uploaded_db = st.file_uploader(
-            "📂 Upload eisting Database SQLite file",
+            "📂 Upload existing database SQLite file:",
             type=['db'],
             accept_multiple_files=False,
             help="Upload an existing SQLite database file"
@@ -113,6 +86,33 @@ def main():
             # Optionally clear uploaded files and processors to avoid mismatch
             st.session_state.uploaded_files = []
             st.session_state.processors = {}
+
+        st.markdown("---")
+
+        # Multiple file upload
+        uploaded_files = st.file_uploader(
+            "📂 Upload IFC files:",
+            type=['ifc'],
+            accept_multiple_files=True,
+            help="Upload multiple IFC files to process and track in the same database"
+        )
+        
+        if uploaded_files:
+            # Process new files
+            for uploaded_file in uploaded_files:
+                if uploaded_file.name not in st.session_state.uploaded_files:
+                    st.session_state.uploaded_files.append(uploaded_file.name)
+                    process_uploaded_file(uploaded_file, uploaded_file.name)
+            
+            # Display uploaded files
+            st.markdown("**Uploaded Files:**")
+            for filename in st.session_state.uploaded_files:
+                st.markdown(f"• {filename}")
+            # Add clear all files button
+            if st.button("🗑️ Clear All Files"):
+                st.session_state.uploaded_files = []
+                st.session_state.processors = {}
+                st.rerun()
 
         # Bulk approval by GUID section (only if IFC files uploaded)
         if st.session_state.uploaded_files:
@@ -168,7 +168,7 @@ def main():
             st.download_button(
                 label="📊 Download Database (.db)",
                 data=db_content,
-                file_name="ifc_data.db",
+                file_name="ifc_database.db",
                 mime="application/octet-stream",
                 help="Download the SQLite database containing the extracted IFC data"
             )
@@ -215,7 +215,7 @@ def main():
                     st.download_button(
                         label="📋 Download Database as Excel (.xlsx)",
                         data=excel_buffer.getvalue(),
-                        file_name=filename,
+                        file_name="ifc_database.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         help="Download the database as an Excel spreadsheet for easy review"
                     )
