@@ -1,0 +1,131 @@
+# Writes approval status from the database file back into the ifc
+import ifcopenshell
+import ifcopenshell.api
+import sqlite3
+import pandas as pd
+import os
+
+# Define parameters for writing back to IFC
+db_filename = 'SuD_Datenbank.db'
+input_ifc_file = "SuD_Aussparungen.ifc"
+output_ifc_file = "SuD_Aussparungen_updated.ifc" # Define the output file path
+
+pset_name = "Planung"
+architect_approval_property = "Architektur_Freigabe"
+structure_approval_property = "Tragwerksplanung_Freigabe"
+
+# Load relevant data from the database
+conn = None
+approved_objects_data = [] # List to store data from the database
+
+try:
+    # Connect to the SQLite database
+    conn = sqlite3.connect(db_filename)
+    c = conn.cursor()
+
+    # Select GUID, approval_architect, and approval_structure for all objects
+    c.execute("SELECT guid, approval_architect, approval_structure FROM ifc_objects")
+
+    # Fetch all the results
+    rows = c.fetchall()
+
+    # Store the data in a list of dictionaries for easier lookup by GUID
+    for row in rows:
+        approved_objects_data.append({
+            "guid": row[0],
+            "approval_architect": bool(row[1]), # Convert INTEGER to BOOLEAN
+            "approval_structure": bool(row[2])  # Convert INTEGER to BOOLEAN
+        })
+
+    print(f"Loaded {len(approved_objects_data)} objects from the database.")
+
+except sqlite3.Error as e:
+    print(f"Database error: {e}")
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
+finally:
+    if conn:
+        conn.close()
+
+# You might want to convert the list of dictionaries to a dictionary keyed by GUID for faster lookup later
+approved_objects_dict = {item['guid']: item for item in approved_objects_data}
+
+# You can now use approved_objects_dict to quickly look up approval statuses by GUID
+# print(approved_objects_dict) # Uncomment to see the dictionary
+
+# Open the IFC file for modification
+
+try:
+    ifc_file = ifcopenshell.open(input_ifc_file)
+    print(f"Successfully opened IFC file: {input_ifc_file}")
+
+except FileNotFoundError:
+    print(f"Error: Input IFC file not found at {input_ifc_file}")
+except Exception as e:
+    print(f"An error occurred while opening the IFC file: {e}")
+
+
+# Match objects in the IFC file with database data by GUID
+
+# Get all relevant elements from the IFC file (e.g., IfcVirtualElement)
+ifc_objects_to_modify = ifc_file.by_type("IfcVirtualElement")
+
+print(f"Found {len(ifc_objects_to_modify)} IfcVirtualElement(s) in the IFC file.")
+
+matched_objects = []
+
+for ifc_object in ifc_objects_to_modify:
+    guid = ifc_object.GlobalId
+    # Check if this GUID exists in the approved_objects_dict
+    if guid in approved_objects_dict:
+        # If a match is found, store the ifc_object and its corresponding database data
+        matched_objects.append({
+            "ifc_object": ifc_object,
+            "db_data": approved_objects_dict[guid]
+        })
+
+print(f"Matched {len(matched_objects)} objects with data from the database.")
+
+
+try:
+    modified_object_count = 0 # Initialize a counter for modified objects
+
+    # Iterate through the matched objects
+    for item in matched_objects:
+        ifc_element = item["ifc_object"]
+        # Access 'db_data' which contains the approval information from the database
+        approval_data = item["db_data"]
+
+        # We will now write the properties for ALL matched objects, not just approved ones
+        try:
+            # Use ifcopenshell.api to add or get the Pset
+            # We need to ensure the product is the ifc_element
+            pset = ifcopenshell.api.run("pset.add_pset", ifc_file, product=ifc_element, name=pset_name)
+            # print(f"Processed Pset '{pset_name}' for GUID: {ifc_element.GlobalId}") # Uncomment for detailed output
+
+            # Prepare the properties dictionary
+            properties_to_add = {}
+            # Add architect approval property as a string ("True" or "False")
+            properties_to_add[architect_approval_property] = str(approval_data['approval_architect'])
+            # Add structure approval property as a string ("True" or "False")
+            properties_to_add[structure_approval_property] = str(approval_data['approval_structure'])
+
+            # Use ifcopenshell.api to edit the Pset and add/update properties
+            ifcopenshell.api.run("pset.edit_pset", ifc_file, pset=pset, properties=properties_to_add)
+            # print(f"Added/Edited properties for GUID: {ifc_element.GlobalId}") # Uncomment for detailed output
+            modified_object_count += 1 # Increment the counter for each modified object
+
+        except Exception as api_e:
+            print(f"An error occurred while using ifcopenshell.api for GUID {ifc_element.GlobalId}: {api_e}")
+
+
+    print(f"Successfully wrote properties to {modified_object_count} objects in the IFC file.") # Print the total count
+
+    # --- Write the modified IFC file ---
+    ifc_file.write(output_ifc_file)
+    print(f"Modified IFC file saved to: {output_ifc_file}")
+
+
+except Exception as e:
+    print(f"An unexpected error occurred during the write-back process: {e}")
+    # print(e) # Added this line to print the exception object directly

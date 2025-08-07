@@ -106,10 +106,10 @@ def main():
         st.markdown("---")
         st.subheader("📂 Use Existing Database")
         uploaded_db = st.file_uploader(
-            "Upload SQLite .db file",
+            "Upload SQLite file",
             type=['db'],
             accept_multiple_files=False,
-            help="Upload an existing SQLite database file to use instead of a new one"
+            help="Upload an existing SQLite database file"
         )
         if uploaded_db is not None:
             # Save uploaded DB to a temp file and re-initialize DatabaseManager
@@ -124,14 +124,56 @@ def main():
             st.session_state.uploaded_files = []
             st.session_state.processors = {}
 
+        # Bulk approval by GUID section
+        st.markdown("---")
+        st.subheader("✅ Bulk Approve by GUID")
+        st.markdown("Paste one or more GUIDs (one per line or comma-separated) to approve them in the database.")
+        guid_input = st.text_area(
+            "Enter GUIDs to approve:",
+            placeholder="Paste GUIDs here...",
+            height=100,
+            key="bulk_guid_input"
+        )
+        if st.button("Approve Selected GUIDs"):
+            if guid_input.strip():
+                # Parse GUIDs (split by comma, semicolon, or newline)
+                import re
+                guid_list = [g.strip() for g in re.split(r'[\n,;]+', guid_input) if g.strip()]
+                if guid_list:
+                    # Get current approval column based on user role
+                    role = st.session_state.user_role
+                    approval_col = 'approval_architect' if role == 'architect' else 'approval_structure'
+                    try:
+                        # Get current table
+                        df = st.session_state.db_manager.get_table_data('ifc_objects')
+                        if approval_col in df.columns and 'guid' in df.columns:
+                            # Update approval for matching GUIDs
+                            updated = 0
+                            for guid in guid_list:
+                                idx = df[df['guid'] == guid].index
+                                if not idx.empty:
+                                    df.loc[idx, approval_col] = True
+                                    updated += len(idx)
+                            if updated > 0:
+                                st.session_state.db_manager.update_table_data('ifc_objects', df)
+                                st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
+                            else:
+                                st.warning("No matching GUIDs found in the database.")
+                        else:
+                            st.error("Database does not contain the required columns.")
+                    except Exception as e:
+                        st.error(f"Error updating approvals: {str(e)}")
+                else:
+                    st.warning("No valid GUIDs entered.")
+            else:
+                st.warning("Please enter at least one GUID.")
+
         # File download section
         if st.session_state.uploaded_files:
             st.markdown("---")
             st.subheader("Export")
-            
             if st.button("📊 Download SQLite Database"):
                 download_database()
-            
             if st.button("📋 Export Database as Excel"):
                 download_excel_database()
     
