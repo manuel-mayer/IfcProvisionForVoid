@@ -299,8 +299,8 @@ def main():
         
         # ...existing code...
         
-    else:
-        # Show file processing interface
+    # Show file processing interface if files are uploaded
+    if st.session_state.uploaded_files:
         display_file_interface()
 
 def process_uploaded_file(uploaded_file, original_filename):
