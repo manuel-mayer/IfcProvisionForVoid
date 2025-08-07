@@ -118,12 +118,9 @@ This application tracks **{st.session_state.get('selected_element_type', 'IfcVir
             for uploaded_file in uploaded_files:
                 if uploaded_file.name not in st.session_state.uploaded_files:
                     success = process_uploaded_file(uploaded_file, uploaded_file.name)
-                    # Only add to uploaded_files if the database actually contains data for this file
                     if success:
-                        df = st.session_state.db_manager.get_table_data('ifc_objects')
-                        if not df.empty and uploaded_file.name in df['filename'].values:
-                            st.session_state.uploaded_files.append(uploaded_file.name)
-                            rerun_needed = True
+                        st.session_state.uploaded_files.append(uploaded_file.name)
+                        rerun_needed = True
             if rerun_needed:
                 st.rerun()
             st.markdown("**Uploaded Files:**")
