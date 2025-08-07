@@ -18,38 +18,6 @@ st.set_page_config(
 def main():
     st.title("🏗️ IFC ProvisionForVoid Tracker")
     st.markdown("Upload and manipulate IFC ProvisionForVoid data files with ease")
-
-    # Show app description only if no IFC files are uploaded (uploaded_files must be non-empty and processed)
-    if not st.session_state.get('uploaded_files') or len(st.session_state.get('uploaded_files', [])) == 0:
-        role_display = "Architect" if st.session_state.get('user_role', 'architect') == "architect" else "Structural Engineer"
-        st.markdown(f'''
-**About this tool**
-
-This application tracks **{st.session_state.get('selected_element_type', 'IfcVirtualElement')}** objects from multiple IFC files and manages them with status tracking:
-
-- **Upload multiple IFC files** containing {st.session_state.get('selected_element_type', 'IfcVirtualElement')} objects
-- **Track object status** - automatically detects new and deleted objects between file versions
-- **Manage approvals** - track architect and structural engineer approvals based on your role
-- **Cross-trade coordination** - view and manage objects from all trades in one unified database
-- **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
-- **Export database** - download the complete tracking database with all trades
-
-**Your role: {role_display}**
-- You can edit: {'Architect' if st.session_state.get('user_role', 'architect') == 'architect' else 'Structural Engineer'} approvals
-- You can view: All approvals and object status from all trades
-
-**Key features:**
-- Multi-file upload support
-- Compares new uploads with existing database to detect changes
-- Uses IFC file timestamps for accurate change tracking
-- Maintains object lifecycle with active/deleted status management
-- Role-based approval system for proper workflow management
-- Unified database tracking across multiple IFC files
-
-**Element types supported:**
-- **IfcVirtualElement**: Openings, provisions for voids
-- **IfcBuildingElementProxy**: Generic building elements, placeholders
-''')
     
     # Initialize session state
     if 'processors' not in st.session_state:
@@ -69,101 +37,274 @@ This application tracks **{st.session_state.get('selected_element_type', 'IfcVir
 
     # Sidebar for file operations
     with st.sidebar:
-        # ...existing sidebar code (user role, element type, file uploaders, etc.)...
+        st.header("File Operations")
+
+        # User role selection
+        st.subheader("👤 User Profile")
         user_role = st.selectbox(
-            "👤 Select your role:",
+            "Select your role:",
             options=["architect", "structural_engineer"],
             index=0 if st.session_state.user_role == "architect" else 1,
             format_func=lambda x: "Architect" if x == "architect" else "Structural Engineer",
             help="Your role determines which approvals you can set in the database"
         )
+        
+        # Update user role in session state
         if user_role != st.session_state.user_role:
             st.session_state.user_role = user_role
             st.success(f"Role changed to: {'Architect' if user_role == 'architect' else 'Structural Engineer'}")
+        
+        st.markdown("---")
+        
+        # Element type selection
+        st.subheader("🔧 Processing Options")
         element_type = st.selectbox(
-            "🔧 Choose element type to extract:",
+            "Choose element type to extract:",
             options=["IfcVirtualElement", "IfcBuildingElementProxy"],
             index=0 if st.session_state.selected_element_type == "IfcVirtualElement" else 1,
             help="Select which type of IFC elements to track in the database"
         )
+        
+        # Update session state if changed
         if element_type != st.session_state.selected_element_type:
             st.session_state.selected_element_type = element_type
+            # Clear processors to force reprocessing with new element type
             if st.session_state.uploaded_files:
                 st.session_state.processors = {}
                 st.session_state.uploaded_files = []
                 st.info("Element type changed. Please re-upload your files to process with the new element type.")
+        
+        st.markdown("---")
+        
+        # Multiple file upload
+        uploaded_files = st.file_uploader(
+            "Upload IFC files",
+            type=['ifc'],
+            accept_multiple_files=True,
+            help="Upload multiple IFC files to process and track in the same database"
+        )
+        
+        if uploaded_files:
+            # Process new files
+            for uploaded_file in uploaded_files:
+                if uploaded_file.name not in st.session_state.uploaded_files:
+                    st.session_state.uploaded_files.append(uploaded_file.name)
+                    process_uploaded_file(uploaded_file, uploaded_file.name)
+            
+            # Display uploaded files
+            st.markdown("**Uploaded Files:**")
+            for filename in st.session_state.uploaded_files:
+                st.markdown(f"• {filename}")
+                
+            # Add clear all files button
+            if st.button("🗑️ Clear All Files"):
+                st.session_state.uploaded_files = []
+                st.session_state.processors = {}
+                st.rerun()
+
+        # --- Move: Upload existing database file section here ---
+        st.markdown("---")
+        st.subheader("📂 Use Existing Database")
         uploaded_db = st.file_uploader(
-            "📂 Upload existing database SQLite file:",
+            "Upload SQLite file",
             type=['db'],
             accept_multiple_files=False,
             help="Upload an existing SQLite database file"
         )
         if uploaded_db is not None:
+            # Save uploaded DB to a temp file and re-initialize DatabaseManager
             with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_db:
                 tmp_db.write(uploaded_db.getvalue())
                 tmp_db_path = tmp_db.name
+            # Re-initialize DatabaseManager with the uploaded DB file
             st.session_state.db_manager = DatabaseManager(tmp_db_path)
             st.session_state.db_file_path = tmp_db_path
             st.success(f"Using uploaded database: {uploaded_db.name}")
+            # Optionally clear uploaded files and processors to avoid mismatch
             st.session_state.uploaded_files = []
             st.session_state.processors = {}
-        uploaded_files = st.file_uploader(
-            "📂 Upload IFC files:",
-            type=['ifc'],
-            accept_multiple_files=True,
-            help="Upload multiple IFC files to process and track in the same database"
+
+        # Bulk approval by GUID section
+        st.markdown("---")
+        st.subheader("✅ Bulk Approve by GUID")
+        st.markdown("Paste one or more GUIDs (one per line or comma-separated) to approve them in the database.")
+        guid_input = st.text_area(
+            "Enter GUIDs to approve:",
+            placeholder="Paste GUIDs here...",
+            height=100,
+            key="bulk_guid_input"
         )
-        if uploaded_files:
-            rerun_needed = False
-            for uploaded_file in uploaded_files:
-                if uploaded_file.name not in st.session_state.uploaded_files:
-                    success = process_uploaded_file(uploaded_file, uploaded_file.name)
-                    if success:
-                        st.session_state.uploaded_files.append(uploaded_file.name)
-                        rerun_needed = True
-            if rerun_needed:
-                st.rerun()
-            st.markdown("**Uploaded Files:**")
-            for filename in st.session_state.uploaded_files:
-                st.markdown(f"• {filename}")
-            if st.button("🗑️ Clear All Files"):
-                st.session_state.uploaded_files = []
-                st.session_state.processors = {}
-                st.rerun()
-    # Always show the file processing interface if files are uploaded
-    if st.session_state.uploaded_files:
+        if st.button("Approve Selected GUIDs"):
+            if guid_input.strip():
+                # Parse GUIDs (split by comma, semicolon, or newline)
+                import re
+                guid_list = [g.strip() for g in re.split(r'[\n,;]+', guid_input) if g.strip()]
+                if guid_list:
+                    # Get current approval column based on user role
+                    role = st.session_state.user_role
+                    approval_col = 'approval_architect' if role == 'architect' else 'approval_structure'
+                    try:
+                        # Get current table
+                        df = st.session_state.db_manager.get_table_data('ifc_objects')
+                        if approval_col in df.columns and 'guid' in df.columns:
+                            # Update approval for matching GUIDs
+                            updated = 0
+                            for guid in guid_list:
+                                idx = df[df['guid'] == guid].index
+                                if not idx.empty:
+                                    df.loc[idx, approval_col] = True
+                                    updated += len(idx)
+                            if updated > 0:
+                                st.session_state.db_manager.update_table_data('ifc_objects', df)
+                                st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
+                            else:
+                                st.warning("No matching GUIDs found in the database.")
+                        else:
+                            st.error("Database does not contain the required columns.")
+                    except Exception as e:
+                        st.error(f"Error updating approvals: {str(e)}")
+                else:
+                    st.warning("No valid GUIDs entered.")
+            else:
+                st.warning("Please enter at least one GUID.")
+
+        # File download section
+        if st.session_state.uploaded_files:
+            st.markdown("---")
+            st.subheader("Export")
+            # .db download button (single, using st.download_button)
+            db_content = st.session_state.db_manager.get_database_content()
+            st.download_button(
+                label="📊 Download Database (.db)",
+                data=db_content,
+                file_name="ifc_data.db",
+                mime="application/octet-stream",
+                help="Download the SQLite database containing the extracted IFC data"
+            )
+            # Excel download button (streamlined, always visible)
+            # Generate Excel in memory and show download button
+            try:
+                df = st.session_state.db_manager.get_table_data('ifc_objects')
+                if not df.empty:
+                    from io import BytesIO
+                    import pandas as pd
+                    excel_buffer = BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name='IFC_Objects', index=False)
+                        # Auto-adjust column widths
+                        worksheet = writer.sheets['IFC_Objects']
+                        for column in worksheet.columns:
+                            max_length = 0
+                            column_letter = column[0].column_letter
+                            for cell in column:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(str(cell.value))
+                                except:
+                                    pass
+                            adjusted_width = min(max_length + 2, 50)
+                            worksheet.column_dimensions[column_letter].width = adjusted_width
+                        # Add a summary sheet
+                        summary_data = {
+                            'Metric': ['Total Objects', 'Active Objects', 'Deleted Objects', 
+                                      'Architect Approved', 'Structure Approved', 'IFC Files'],
+                            'Count': [
+                                len(df),
+                                len(df[df['status'] == 'active']) if 'status' in df.columns else len(df),
+                                len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0,
+                                len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0,
+                                len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0,
+                                df['filename'].nunique() if 'filename' in df.columns else 1
+                            ]
+                        }
+                        summary_df = pd.DataFrame(summary_data)
+                        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                    excel_buffer.seek(0)
+                    filename = "IFC_Database.xlsx"
+                    st.download_button(
+                        label="📋 Download Database as Excel (.xlsx)",
+                        data=excel_buffer.getvalue(),
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Download the database as an Excel spreadsheet for easy review"
+                    )
+                else:
+                    st.info("No data found in database to export as Excel.")
+            except Exception as e:
+                st.error(f"Error preparing Excel file: {str(e)}")
+    
+    # Main content area
+    if not st.session_state.uploaded_files:
+        # Welcome screen
+        st.info("👆 Please upload IFC files containing ProvisionForVoids to get started")
+        
+        role_display = "Architect" if st.session_state.user_role == "architect" else "Structural Engineer"
+        
+        st.markdown("### About this tool")
+        st.markdown(f"""
+        This application tracks **{st.session_state.selected_element_type}** objects from multiple IFC files and manages them with status tracking:
+        
+        - **Upload multiple IFC files** containing {st.session_state.selected_element_type} objects
+        - **Track object status** - automatically detects new and deleted objects between file versions
+        - **Manage approvals** - track architect and structural engineer approvals based on your role
+        - **Cross-trade coordination** - view and manage objects from all trades in one unified database
+        - **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
+        - **Export database** - download the complete tracking database with all trades
+        
+        **Your role: {role_display}**
+        - You can edit: {'Architect' if st.session_state.user_role == 'architect' else 'Structural Engineer'} approvals
+        - You can view: All approvals and object status from all trades
+        
+        **Key features:**
+        - Multi-file upload support
+        - Compares new uploads with existing database to detect changes
+        - Uses IFC file timestamps for accurate change tracking
+        - Maintains object lifecycle with active/deleted status management
+        - Role-based approval system for proper workflow management
+        - Unified database tracking across multiple IFC files
+        
+        **Element types supported:**
+        - **IfcVirtualElement**: Openings, provisions for voids
+        - **IfcBuildingElementProxy**: Generic building elements, placeholders    
+        """)
+        
+    else:
+        # Show file processing interface
         display_file_interface()
 
 def process_uploaded_file(uploaded_file, original_filename):
     """Process the uploaded IFC file"""
     try:
         with st.spinner("Processing IFC file..."):
+            # Create temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file_path = tmp_file.name
+            
+            # Initialize processor for this file
             processor = IFCProcessor(tmp_file_path)
+            
+            # Process the file with selected element type and original filename
             success = processor.load_ifc_to_database(
-                st.session_state.db_manager,
+                st.session_state.db_manager, 
                 st.session_state.selected_element_type,
                 original_filename
             )
-            # Debug: print the ifc_objects table after processing
-            try:
-                df_debug = st.session_state.db_manager.get_table_data('ifc_objects')
-                st.write('**DEBUG: ifc_objects table after upload:**')
-                st.write(df_debug)
-            except Exception as debug_e:
-                st.write(f'**DEBUG: Error reading ifc_objects table:** {debug_e}')
+            
+            # Store processor for this file
             if success:
                 st.session_state.processors[original_filename] = processor
+            
+            if success:
                 st.success(f"✅ Successfully processed '{uploaded_file.name}'")
             else:
                 st.error(f"❌ Failed to process '{uploaded_file.name}'")
+            
+            # Clean up temporary file
             os.unlink(tmp_file_path)
-            return success
+            
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
-        return False
 
 def display_file_interface():
     """Display the main interface for file manipulation"""
@@ -239,10 +380,93 @@ def display_ifc_objects_table(df):
         with st.expander("🔍 Filter Options"):
             col1, col2, col3 = st.columns(3)
             
-        # Status filter
-        status_options = ['All'] + list(df['status'].unique()) if 'status' in df.columns else ['All']
-        selected_status = st.selectbox("Filter by Status:", status_options)
-        # ...existing code for other filters and table display...
+            with col1:
+                # Status filter
+                status_options = ['All'] + list(df['status'].unique()) if 'status' in df.columns else ['All']
+                selected_status = st.selectbox("Filter by Status:", status_options)
+                
+            with col2:
+                # Filename filter
+                filename_options = ['All'] + list(df['filename'].unique()) if 'filename' in df.columns else ['All']
+                selected_filename = st.selectbox("Filter by File:", filename_options)
+                
+            with col3:
+                # Date range
+                if 'added_timestamp' in df.columns:
+                    show_date_filter = st.checkbox("Filter by Date Range")
+        
+        # Apply filters
+        filtered_df = df.copy()
+        
+        if selected_status != 'All' and 'status' in df.columns:
+            filtered_df = filtered_df[filtered_df['status'] == selected_status]
+        
+        if selected_filename != 'All' and 'filename' in df.columns:
+            filtered_df = filtered_df[filtered_df['filename'] == selected_filename]
+        
+        # Display filtered data
+        if not filtered_df.empty:
+            # Configure columns based on user role
+            column_config = {}
+            disabled_cols = ['guid']  # GUID should not be editable
+            user_role = st.session_state.user_role
+            
+            # Show role-based info
+            role_display = "Architect" if user_role == "architect" else "Structural Engineer"
+            st.info(f"👤 Logged in as: **{role_display}** - You can edit {role_display.lower()} approvals")
+            
+            if 'approval_architect' in filtered_df.columns:
+                if user_role == 'architect':
+                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
+                        "Architect Approval ✓",
+                        help="Toggle architect approval (you can edit this)"
+                    )
+                else:
+                    disabled_cols.append('approval_architect')
+                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
+                        "Architect Approval (read-only)",
+                        help="Only architects can edit this approval"
+                    )
+            
+            if 'approval_structure' in filtered_df.columns:
+                if user_role == 'structural_engineer':
+                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
+                        "Structural Approval ✓", 
+                        help="Toggle structural engineer approval (you can edit this)"
+                    )
+                else:
+                    disabled_cols.append('approval_structure')
+                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
+                        "Structural Approval (read-only)",
+                        help="Only structural engineers can edit this approval"
+                    )
+            
+            if 'status' in filtered_df.columns:
+                column_config['status'] = st.column_config.SelectboxColumn(
+                    "Status",
+                    options=['active', 'deleted'],
+                    help="Object status (all users can edit)"
+                )
+            
+            # Data editor
+            edited_df = st.data_editor(
+                filtered_df,
+                use_container_width=True,
+                disabled=disabled_cols,
+                column_config=column_config,
+                hide_index=True,
+                key="ifc_objects_editor"
+            )
+            
+            # Save changes button
+            if st.button("💾 Save Changes to Database", type="primary"):
+                save_ifc_objects_changes(edited_df)
+            
+            # Show record count
+            st.caption(f"Showing {len(filtered_df)} of {len(df)} total records")
+            
+        else:
+            st.info("No records match the current filters.")
             
     except Exception as e:
         st.error(f"Error displaying IFC objects table: {str(e)}")
