@@ -297,29 +297,7 @@ def main():
             except Exception as e:
                 st.error(f"Error writing approvals to IFCs: {str(e)}")
         
-        - **Upload multiple IFC files** containing {st.session_state.selected_element_type} objects
-        - **Track object status** - automatically detects new and deleted objects between file versions
-        - **Manage approvals** - track architect and structural engineer approvals based on your role
-        - **Cross-trade coordination** - view and manage objects from all trades in one unified database
-        - **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
-        - **Export database** - download the complete tracking database with all trades
-        
-        **Your role: {role_display}**
-        - You can edit: {'Architect' if st.session_state.user_role == 'architect' else 'Structural Engineer'} approvals
-        - You can view: All approvals and object status from all trades
-        
-        **Key features:**
-        - Multi-file upload support
-        - Compares new uploads with existing database to detect changes
-        - Uses IFC file timestamps for accurate change tracking
-        - Maintains object lifecycle with active/deleted status management
-        - Role-based approval system for proper workflow management
-        - Unified database tracking across multiple IFC files
-        
-        **Element types supported:**
-        - **IfcVirtualElement**: Openings, provisions for voids
-        - **IfcBuildingElementProxy**: Generic building elements, placeholders    
-        """)
+        # ...existing code...
         
     else:
         # Show file processing interface
