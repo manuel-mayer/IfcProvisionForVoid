@@ -411,62 +411,10 @@ def display_ifc_objects_table(df):
         with st.expander("🔍 Filter Options"):
             col1, col2, col3 = st.columns(3)
             
-            with col1:
-                # Status filter
-                status_options = ['All'] + list(df['status'].unique()) if 'status' in df.columns else ['All']
-                selected_status = st.selectbox("Filter by Status:", status_options)
-                
-            with col2:
-        # ...existing code...
-                        "Architect Approval ✓",
-                        help="Toggle architect approval (you can edit this)"
-                    )
-                else:
-                    disabled_cols.append('approval_architect')
-                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
-                        "Architect Approval (read-only)",
-                        help="Only architects can edit this approval"
-                    )
-            
-            if 'approval_structure' in filtered_df.columns:
-                if user_role == 'structural_engineer':
-                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
-                        "Structural Approval ✓", 
-                        help="Toggle structural engineer approval (you can edit this)"
-                    )
-                else:
-                    disabled_cols.append('approval_structure')
-                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
-                        "Structural Approval (read-only)",
-                        help="Only structural engineers can edit this approval"
-                    )
-            
-            if 'status' in filtered_df.columns:
-                column_config['status'] = st.column_config.SelectboxColumn(
-                    "Status",
-                    options=['active', 'deleted'],
-                    help="Object status (all users can edit)"
-                )
-            
-            # Data editor
-            edited_df = st.data_editor(
-                filtered_df,
-                use_container_width=True,
-                disabled=disabled_cols,
-                column_config=column_config,
-                hide_index=True,
-                key="ifc_objects_editor"
-            )
-            
-            # Save changes button
-            if st.button("💾 Save Changes to Database", type="primary"):
-                save_ifc_objects_changes(edited_df)
-            
-            # Show record count
-            st.caption(f"Showing {len(filtered_df)} of {len(df)} total records")
-            
-        else:
-            st.info("No records match the current filters.")
+        # Status filter
+        status_options = ['All'] + list(df['status'].unique()) if 'status' in df.columns else ['All']
+        selected_status = st.selectbox("Filter by Status:", status_options)
+        # ...existing code for other filters and table display...
             
     except Exception as e:
         st.error(f"Error displaying IFC objects table: {str(e)}")
