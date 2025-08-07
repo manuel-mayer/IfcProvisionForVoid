@@ -71,6 +71,59 @@ def main():
                 st.session_state.uploaded_files = []
                 st.info("Element type changed. Please re-upload your files to process with the new element type.")
 
+        # File download section
+        if st.session_state.uploaded_files:
+            st.markdown("---")
+
+        st.markdown("---")
+        # Upload existing database file section (now before IFC upload)
+        uploaded_db = st.file_uploader(
+            "📊 Upload existing SQLite file",
+            type=['db'],
+            accept_multiple_files=False,
+            help="Upload an existing SQLite database file"
+        )
+        if uploaded_db is not None:
+            # Save uploaded DB to a temp file and re-initialize DatabaseManager
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_db:
+                tmp_db.write(uploaded_db.getvalue())
+                tmp_db_path = tmp_db.name
+            # Re-initialize DatabaseManager with the uploaded DB file
+            st.session_state.db_manager = DatabaseManager(tmp_db_path)
+            st.session_state.db_file_path = tmp_db_path
+            st.success(f"Using uploaded database: {uploaded_db.name}")
+            # Optionally clear uploaded files and processors to avoid mismatch
+            st.session_state.uploaded_files = []
+            st.session_state.processors = {}
+
+        st.markdown("---")
+        # Multiple file upload
+        uploaded_files = st.file_uploader(
+            "📂 Upload IFC files",
+            type=['ifc'],
+            accept_multiple_files=True,
+            help="Upload multiple IFC files to process and track in the same database"
+        )
+        
+        if uploaded_files:
+            # Process new files
+            for uploaded_file in uploaded_files:
+                if uploaded_file.name not in st.session_state.uploaded_files:
+                    st.session_state.uploaded_files.append(uploaded_file.name)
+                    process_uploaded_file(uploaded_file, uploaded_file.name)
+            
+            # Display uploaded files
+            st.markdown("**Uploaded Files:**")
+            for filename in st.session_state.uploaded_files:
+                st.markdown(f"• {filename}")
+            
+            # Add clear all files button
+            if st.button("🗑️ Clear All Files"):
+                st.session_state.uploaded_files = []
+                st.session_state.processors = {}
+                st.rerun()
+
+        # --- Export section at the bottom ---
         st.markdown("---")
         st.subheader("Export")
         # .db download button (single, using st.download_button)
@@ -131,58 +184,6 @@ def main():
                 st.info("No data found in database to export as Excel.")
         except Exception as e:
             st.error(f"Error preparing Excel file: {str(e)}")
-
-        # File download section
-        if st.session_state.uploaded_files:
-            st.markdown("---")
-
-        st.markdown("---")
-        # Upload existing database file section (now before IFC upload)
-        uploaded_db = st.file_uploader(
-            "📊 Upload existing SQLite file",
-            type=['db'],
-            accept_multiple_files=False,
-            help="Upload an existing SQLite database file"
-        )
-        if uploaded_db is not None:
-            # Save uploaded DB to a temp file and re-initialize DatabaseManager
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_db:
-                tmp_db.write(uploaded_db.getvalue())
-                tmp_db_path = tmp_db.name
-            # Re-initialize DatabaseManager with the uploaded DB file
-            st.session_state.db_manager = DatabaseManager(tmp_db_path)
-            st.session_state.db_file_path = tmp_db_path
-            st.success(f"Using uploaded database: {uploaded_db.name}")
-            # Optionally clear uploaded files and processors to avoid mismatch
-            st.session_state.uploaded_files = []
-            st.session_state.processors = {}
-
-        st.markdown("---")
-        # Multiple file upload
-        uploaded_files = st.file_uploader(
-            "📂 Upload IFC files",
-            type=['ifc'],
-            accept_multiple_files=True,
-            help="Upload multiple IFC files to process and track in the same database"
-        )
-        
-        if uploaded_files:
-            # Process new files
-            for uploaded_file in uploaded_files:
-                if uploaded_file.name not in st.session_state.uploaded_files:
-                    st.session_state.uploaded_files.append(uploaded_file.name)
-                    process_uploaded_file(uploaded_file, uploaded_file.name)
-            
-            # Display uploaded files
-            st.markdown("**Uploaded Files:**")
-            for filename in st.session_state.uploaded_files:
-                st.markdown(f"• {filename}")
-            
-            # Add clear all files button
-            if st.button("🗑️ Clear All Files"):
-                st.session_state.uploaded_files = []
-                st.session_state.processors = {}
-                st.rerun()
     
     # Main content area
     if not st.session_state.uploaded_files:
