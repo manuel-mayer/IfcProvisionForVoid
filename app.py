@@ -171,6 +171,18 @@ def main():
                 help="Download the SQLite database containing the extracted IFC data"
             )
             # Excel download button (streamlined, always visible)
+            st.markdown("---")
+            st.subheader("Export")
+            # .db download button (single, using st.download_button)
+            db_content = st.session_state.db_manager.get_database_content()
+            st.download_button(
+                label="📊 Download Database (.db)",
+                data=db_content,
+                file_name="ifc_database.db",
+                mime="application/octet-stream",
+                help="Download the SQLite database containing the extracted IFC data"
+            )
+            # Excel download button (streamlined, always visible)
             # Generate Excel in memory and show download button
             try:
                 df = st.session_state.db_manager.get_table_data('ifc_objects')
@@ -209,7 +221,6 @@ def main():
                         summary_df = pd.DataFrame(summary_data)
                         summary_df.to_excel(writer, sheet_name='Summary', index=False)
                     excel_buffer.seek(0)
-                    filename = "IFC_Database.xlsx"
                     st.download_button(
                         label="📋 Download Database as Excel (.xlsx)",
                         data=excel_buffer.getvalue(),
@@ -221,17 +232,70 @@ def main():
                     st.info("No data found in database to export as Excel.")
             except Exception as e:
                 st.error(f"Error preparing Excel file: {str(e)}")
-    
-    # Main content area
-    if not st.session_state.uploaded_files:
-        # Welcome screen
-        st.info("👆 Please upload IFC files containing ProvisionForVoids to get started")
-        
-        role_display = "Architect" if st.session_state.user_role == "architect" else "Structural Engineer"
-        
-        st.markdown("### About this tool")
-        st.markdown(f"""
-        This application tracks **{st.session_state.selected_element_type}** objects from multiple IFC files and manages them with status tracking:
+
+            # --- IFC Write-back Section ---
+        st.markdown("---")
+        st.subheader("Write Approvals Back to IFC")
+        st.markdown("Export all uploaded IFC files with the current approval status written back from the database.")
+        if st.button("⬇️ Download All IFCs with Approvals"):
+            try:
+                import ifcopenshell
+                import ifcopenshell.api
+                import tempfile
+                df = st.session_state.db_manager.get_table_data('ifc_objects')
+                approved_objects_dict = {row['guid']: row for _, row in df.iterrows()}
+                element_types = ["IfcVirtualElement", "IfcBuildingElementProxy"]
+                updated_any = False
+                for uploaded_file in st.session_state.processors:
+                    processor = st.session_state.processors[uploaded_file]
+                    uploaded_file_obj = getattr(processor, 'ifc_file_path', None)
+                    if not uploaded_file_obj:
+                        continue
+                    try:
+                        ifc_file = ifcopenshell.open(uploaded_file_obj)
+                        all_ifc_objects = []
+                        for etype in element_types:
+                            all_ifc_objects.extend(ifc_file.by_type(etype))
+                        # Only update if there are matching GUIDs
+                        matching_guids = [o for o in all_ifc_objects if o.GlobalId in approved_objects_dict]
+                        if not matching_guids:
+                            continue
+                        pset_name = "Planung"
+                        architect_approval_property = "Architektur_Freigabe"
+                        structure_approval_property = "Tragwerksplanung_Freigabe"
+                        modified_object_count = 0
+                        for ifc_object in matching_guids:
+                            guid = ifc_object.GlobalId
+                            approval_data = approved_objects_dict[guid]
+                            try:
+                                pset = ifcopenshell.api.run("pset.add_pset", ifc_file, product=ifc_object, name=pset_name)
+                                properties_to_add = {
+                                    architect_approval_property: str(bool(approval_data.get('approval_architect', False))),
+                                    structure_approval_property: str(bool(approval_data.get('approval_structure', False)))
+                                }
+                                ifcopenshell.api.run("pset.edit_pset", ifc_file, pset=pset, properties=properties_to_add)
+                                modified_object_count += 1
+                            except Exception:
+                                pass
+                        if modified_object_count > 0:
+                            updated_any = True
+                            with tempfile.NamedTemporaryFile(delete=False, suffix="_with_approvals.ifc") as tmp_ifc:
+                                ifc_file.write(tmp_ifc.name)
+                                tmp_ifc.seek(0)
+                                st.download_button(
+                                    label=f"Download Updated {uploaded_file} ({modified_object_count} objects updated)",
+                                    data=tmp_ifc.read(),
+                                    file_name=f"{uploaded_file.replace('.ifc','')}_with_approvals.ifc",
+                                    mime="application/octet-stream",
+                                    help=f"Download the IFC file '{uploaded_file}' with approval status written back from the database."
+                                )
+                            st.success(f"Successfully wrote approvals to {modified_object_count} objects in {uploaded_file}.")
+                    except Exception as e:
+                        st.error(f"Error writing approvals to IFC '{uploaded_file}': {str(e)}")
+                if not updated_any:
+                    st.info("No uploaded IFC files had objects with matching GUIDs in the database.")
+            except Exception as e:
+                st.error(f"Error writing approvals to IFCs: {str(e)}")
         
         - **Upload multiple IFC files** containing {st.session_state.selected_element_type} objects
         - **Track object status** - automatically detects new and deleted objects between file versions
@@ -375,38 +439,7 @@ def display_ifc_objects_table(df):
                 selected_status = st.selectbox("Filter by Status:", status_options)
                 
             with col2:
-                # Filename filter
-                filename_options = ['All'] + list(df['filename'].unique()) if 'filename' in df.columns else ['All']
-                selected_filename = st.selectbox("Filter by File:", filename_options)
-                
-            with col3:
-                # Date range
-                if 'added_timestamp' in df.columns:
-                    show_date_filter = st.checkbox("Filter by Date Range")
-        
-        # Apply filters
-        filtered_df = df.copy()
-        
-        if selected_status != 'All' and 'status' in df.columns:
-            filtered_df = filtered_df[filtered_df['status'] == selected_status]
-        
-        if selected_filename != 'All' and 'filename' in df.columns:
-            filtered_df = filtered_df[filtered_df['filename'] == selected_filename]
-        
-        # Display filtered data
-        if not filtered_df.empty:
-            # Configure columns based on user role
-            column_config = {}
-            disabled_cols = ['guid']  # GUID should not be editable
-            user_role = st.session_state.user_role
-            
-            # Show role-based info
-            role_display = "Architect" if user_role == "architect" else "Structural Engineer"
-            st.info(f"👤 Logged in as: **{role_display}** - You can edit {role_display.lower()} approvals")
-            
-            if 'approval_architect' in filtered_df.columns:
-                if user_role == 'architect':
-                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
+        # ...existing code...
                         "Architect Approval ✓",
                         help="Toggle architect approval (you can edit this)"
                     )
