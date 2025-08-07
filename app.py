@@ -37,12 +37,10 @@ def main():
 
     # Sidebar for file operations
     with st.sidebar:
-        st.header("File Operations")
-
+        
         # User role selection
-        st.subheader("👤 User Profile")
         user_role = st.selectbox(
-            "Select your role:",
+            "👤 Select your role:",
             options=["architect", "structural_engineer"],
             index=0 if st.session_state.user_role == "architect" else 1,
             format_func=lambda x: "Architect" if x == "architect" else "Structural Engineer",
@@ -57,9 +55,8 @@ def main():
         st.markdown("---")
         
         # Element type selection
-        st.subheader("🔧 Processing Options")
         element_type = st.selectbox(
-            "Choose element type to extract:",
+            "🔧 Choose element type to extract:",
             options=["IfcVirtualElement", "IfcBuildingElementProxy"],
             index=0 if st.session_state.selected_element_type == "IfcVirtualElement" else 1,
             help="Select which type of IFC elements to track in the database"
@@ -78,7 +75,7 @@ def main():
         
         # Multiple file upload
         uploaded_files = st.file_uploader(
-            "Upload IFC files",
+            "📂 Upload IFC files",
             type=['ifc'],
             accept_multiple_files=True,
             help="Upload multiple IFC files to process and track in the same database"
@@ -104,9 +101,8 @@ def main():
 
         # --- Move: Upload existing database file section here ---
         st.markdown("---")
-        st.subheader("📂 Use Existing Database")
         uploaded_db = st.file_uploader(
-            "Upload SQLite file",
+            "📂 Upload existing SQLite file",
             type=['db'],
             accept_multiple_files=False,
             help="Upload an existing SQLite database file"
