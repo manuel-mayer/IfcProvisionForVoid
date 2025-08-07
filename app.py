@@ -447,6 +447,77 @@ def display_file_interface():
             
             # Display the table (user-selected number of rows)
             display_ifc_objects_table(display_df)
+
+        # --- Big Picture Approval Overview per Building Storey ---
+        st.markdown('---')
+        st.subheader('Approval Status per Building Storey')
+        try:
+            # Map columns case-insensitively
+            col_map = {c.lower(): c for c in df.columns}
+            required_cols = ['buildingstorey', 'architectapproval', 'structuralapproval', 'status']
+            if all(col in col_map for col in required_cols):
+                # Exclude deleted objects (case-insensitive)
+                status_col = col_map['status']
+                active_df = df[df[status_col].str.lower() != 'deleted'].copy() if df[status_col].dtype == object else df[df[status_col] != 'deleted'].copy()
+                # Determine unique identifier column for counting objects
+                if 'guid' in col_map:
+                    count_col = col_map['guid']
+                elif 'globalid' in col_map:
+                    count_col = col_map['globalid']
+                else:
+                    count_col = None
+                # Use correct column names
+                storey_col = col_map['buildingstorey']
+                arch_col = col_map['architectapproval']
+                struct_col = col_map['structuralapproval']
+                # Group by BuildingStorey and count approvals (0/1 booleans)
+                grouped = active_df.groupby(storey_col).agg({
+                    arch_col: 'sum',
+                    struct_col: 'sum'
+                })
+                if count_col:
+                    grouped['Total'] = active_df.groupby(storey_col)[count_col].count()
+                else:
+                    grouped['Total'] = active_df.groupby(storey_col).size()
+                grouped = grouped.reset_index()
+                # Calculate percent approved (either architect or structure approved)
+                grouped['Percent Approved'] = ((grouped[arch_col] + grouped[struct_col]) / (2 * grouped['Total'])).fillna(0) * 100
+                grouped['Percent Approved'] = grouped['Percent Approved'].round(1)
+                # Reorder columns for clarity
+                grouped = grouped[[storey_col, 'Total', arch_col, struct_col, 'Percent Approved']]
+                grouped = grouped.rename(columns={
+                    storey_col: 'Storey',
+                    arch_col: 'Architect Approved',
+                    struct_col: 'Structure Approved'
+                })
+                # Show as table with status bar for percent approved
+                import streamlit.components.v1 as components
+                def percent_bar(pct):
+                    color = '#4caf50' if pct >= 90 else ('#ff9800' if pct >= 50 else '#f44336')
+                    return f"""
+                        <div style='background:#eee;width:100%;height:18px;border-radius:4px;overflow:hidden;'>
+                            <div style='background:{color};width:{pct}%;height:100%;text-align:right;padding-right:6px;color:#fff;font-size:12px;font-weight:bold;'>{pct:.1f}%</div>
+                        </div>
+                    """
+                st.markdown("<style>div[data-testid='stHorizontalBlock'] table td { vertical-align: middle !important; }</style>", unsafe_allow_html=True)
+                # Add headers above the columns
+                header_cols = st.columns([2,1,2,2,3])
+                header_cols[0].markdown("**Storey**")
+                header_cols[1].markdown("**Total**")
+                header_cols[2].markdown("**Architect Approved**")
+                header_cols[3].markdown("**Structure Approved**")
+                header_cols[4].markdown("**Percent Approved**")
+                for _, row in grouped.iterrows():
+                    col1, col2, col3, col4, col5 = st.columns([2,1,2,2,3])
+                    col1.markdown(f"**{row['Storey']}**")
+                    col2.markdown(f"{int(row['Total'])}")
+                    col3.markdown(f"{int(row['Architect Approved'])}")
+                    col4.markdown(f"{int(row['Structure Approved'])}")
+                    col5.markdown(percent_bar(row['Percent Approved']), unsafe_allow_html=True)
+            else:
+                st.info('Not enough data to show approval overview per building storey. Required columns: BuildingStorey, ArchitectApproval, StructuralApproval, status.')
+        except Exception as e:
+            st.error(f'Error generating approval overview: {str(e)}')
         
     except Exception as e:
         st.error(f"Error loading IFC objects: {str(e)}")
