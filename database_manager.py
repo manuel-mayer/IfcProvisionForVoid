@@ -25,29 +25,30 @@ class DatabaseManager:
             raise
     
     def create_table(self, table_name: str, columns: Dict[str, str]) -> bool:
-        """Create a table with specified columns"""
+        """Create a table with specified columns. Column type can include constraints (e.g., 'TEXT UNIQUE')."""
         try:
             if not self.connection:
                 return False
-            
+
             # Sanitize table name
             safe_table_name = self._sanitize_table_name(table_name)
-            
+
             # Build CREATE TABLE statement
             column_definitions = []
             for col_name, col_type in columns.items():
                 safe_col_name = self._sanitize_column_name(col_name)
+                # col_type can include constraints (e.g., 'TEXT UNIQUE')
                 column_definitions.append(f"{safe_col_name} {col_type}")
-            
+
             create_sql = f"CREATE TABLE IF NOT EXISTS {safe_table_name} ({', '.join(column_definitions)})"
-            
+
             cursor = self.connection.cursor()
             cursor.execute(create_sql)
             self.connection.commit()
-            
+
             logging.info(f"Created table {safe_table_name} with {len(columns)} columns")
             return True
-        
+
         except Exception as e:
             logging.error(f"Error creating table {table_name}: {str(e)}")
             return False

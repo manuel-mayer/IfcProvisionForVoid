@@ -49,6 +49,7 @@ Thumbs.db
 # Project specific
 *.ifc
 *.log
+ifc_database.db
 
 # Streamlit
 .streamlit/secrets.toml

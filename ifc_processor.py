@@ -77,9 +77,9 @@ class IFCProcessor:
             connection = db_manager.connection
             cursor = connection.cursor()
             cursor.execute('''CREATE TABLE IF NOT EXISTS ifc_objects
-                             (guid TEXT, filename TEXT, BuildingStorey TEXT, added_timestamp TEXT, status TEXT DEFAULT 'active',
-                              approval_architect BOOLEAN DEFAULT FALSE, approval_structure BOOLEAN DEFAULT FALSE,
-                              deletion_date TEXT)''')
+                             (IfcGuid TEXT UNIQUE, Filename TEXT, BuildingStorey TEXT, Status TEXT DEFAULT 'active',
+                              ArchitectApproval BOOLEAN DEFAULT FALSE, StructuralApproval BOOLEAN DEFAULT FALSE,
+                              added_date TEXT, deleted_date TEXT)''')
             connection.commit()
             logging.info("Created ifc_objects table (BuildingStorey after filename)")
         except Exception as e:
@@ -115,6 +115,7 @@ class IFCProcessor:
             cursor = connection.cursor()
 
             # Extract data from elements, including BuildingStorey after filename
+
             updated_extracted_data = []
             for element in elements:
                 storey_name = self._get_building_storey_name(element)
@@ -125,7 +126,7 @@ class IFCProcessor:
 
             # Query existing data from database
             existing_data = {}
-            cursor.execute("SELECT guid, status FROM ifc_objects WHERE filename = ?", (ifc_filename,))
+            cursor.execute("SELECT IfcGuid, Status FROM ifc_objects WHERE Filename = ?", (ifc_filename,))
             for row in cursor.fetchall():
                 existing_data[row[0]] = row[1]
 
@@ -141,7 +142,7 @@ class IFCProcessor:
                         deleted_guids.append(guid)
 
                 if deleted_guids:
-                    cursor.executemany('UPDATE ifc_objects SET status = "deleted", deletion_date = ? WHERE guid = ?',
+                    cursor.executemany('UPDATE ifc_objects SET Status = "deleted", deleted_date = ? WHERE IfcGuid = ?',
                                      [(deletion_timestamp, guid) for guid in deleted_guids])
                     logging.info(f"Marked {len(deleted_guids)} objects as 'deleted'")
 
@@ -152,11 +153,11 @@ class IFCProcessor:
 
             for guid, filename, storey_name in updated_extracted_data:
                 if guid not in existing_guids_set:
-                    new_objects_to_add.append((guid, filename, storey_name, added_timestamp, 'active', False, False, None))
+                    new_objects_to_add.append((guid, filename, storey_name, 'active', False, False, added_timestamp, None))
 
             if new_objects_to_add:
-                cursor.executemany('INSERT INTO ifc_objects VALUES (?,?,?,?,?,?,?,?)', new_objects_to_add)
-                logging.info(f"Added {len(new_objects_to_add)} new objects to database (BuildingStorey after filename)")
+                cursor.executemany('INSERT OR IGNORE INTO ifc_objects (IfcGuid, Filename, BuildingStorey, Status, ArchitectApproval, StructuralApproval, added_date, deleted_date) VALUES (?,?,?,?,?,?,?,?)', new_objects_to_add)
+                logging.info(f"Added {len(new_objects_to_add)} new objects to database (BuildingStorey after filename, using INSERT OR IGNORE for unique GUIDs)")
 
             connection.commit()
             return True

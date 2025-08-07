@@ -168,10 +168,14 @@ def main():
                             # Get the modified IFC content
                             ifc_content = processor.get_ifc_content()
                             if ifc_content:
+                                # Fix filename: insert _modified before extension
+                                import os
+                                base, ext = os.path.splitext(filename)
+                                download_name = f"{base}_modified{ext if ext else '.ifc'}"
                                 st.download_button(
                                     label=f"📥 Download Modified IFC: {filename}",
                                     data=ifc_content,
-                                    file_name=f"{filename}_modified",
+                                    file_name=download_name,
                                     mime="application/octet-stream",
                                     help="Download the IFC file with updated approvals"
                                 )
@@ -297,6 +301,33 @@ def process_uploaded_file(uploaded_file, original_filename):
             # Determine if we need to reset the database (no DB uploaded and this is the first IFC file)
             uploaded_files_count = len(st.session_state.uploaded_files)
             reset_db = (st.session_state.db_file_path is None) and (uploaded_files_count == 1)
+
+
+            # Get existing GUIDs in the database
+            try:
+                existing_df = st.session_state.db_manager.get_table_data('ifc_objects')
+                existing_guids = set(existing_df['guid']) if 'guid' in existing_df.columns else set()
+            except Exception:
+                existing_guids = set()
+
+            # Patch the processor to filter out objects with duplicate GUIDs before adding
+            def filter_duplicate_guids(objects):
+                # objects: list of dicts or DataFrame
+                if isinstance(objects, pd.DataFrame):
+                    return objects[~objects['guid'].isin(existing_guids)]
+                elif isinstance(objects, list):
+                    return [obj for obj in objects if obj.get('guid') not in existing_guids]
+                return objects
+
+            # Monkey-patch processor to filter duplicates before DB insert (if supported)
+            if hasattr(processor, 'preprocess_objects'):
+                orig_preprocess = processor.preprocess_objects
+                def new_preprocess(objects):
+                    filtered = filter_duplicate_guids(objects)
+                    return orig_preprocess(filtered)
+                processor.preprocess_objects = new_preprocess
+            elif hasattr(processor, 'objects_to_add'):
+                processor.objects_to_add = filter_duplicate_guids(processor.objects_to_add)
 
             # Process the file with selected element type and original filename
             success = processor.load_ifc_to_database(
