@@ -70,9 +70,94 @@ def main():
                 st.session_state.processors = {}
                 st.session_state.uploaded_files = []
                 st.info("Element type changed. Please re-upload your files to process with the new element type.")
-        
+
         st.markdown("---")
-        
+        st.subheader("Export")
+        # .db download button (single, using st.download_button)
+        db_content = st.session_state.db_manager.get_database_content()
+        st.download_button(
+            label="📊 Download Database (.db)",
+            data=db_content,
+            file_name="ifc_data.db",
+            mime="application/octet-stream",
+            help="Download the SQLite database containing the extracted IFC data"
+        )
+        # Excel download button (streamlined, always visible)
+        # Generate Excel in memory and show download button
+        try:
+            df = st.session_state.db_manager.get_table_data('ifc_objects')
+            if not df.empty:
+                excel_buffer = BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name='IFC_Objects', index=False)
+                    # Auto-adjust column widths
+                    worksheet = writer.sheets['IFC_Objects']
+                    for column in worksheet.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        for cell in column:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(str(cell.value))
+                            except:
+                                pass
+                        adjusted_width = min(max_length + 2, 50)
+                        worksheet.column_dimensions[column_letter].width = adjusted_width
+                    # Add a summary sheet
+                    summary_data = {
+                        'Metric': ['Total Objects', 'Active Objects', 'Deleted Objects', 
+                                  'Architect Approved', 'Structure Approved', 'IFC Files'],
+                        'Count': [
+                            len(df),
+                            len(df[df['status'] == 'active']) if 'status' in df.columns else len(df),
+                            len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0,
+                            len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0,
+                            len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0,
+                            df['filename'].nunique() if 'filename' in df.columns else 1
+                        ]
+                    }
+                    summary_df = pd.DataFrame(summary_data)
+                    summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                excel_buffer.seek(0)
+                filename = "IFC_Database.xlsx"
+                st.download_button(
+                    label="📋 Download Database as Excel (.xlsx)",
+                    data=excel_buffer.getvalue(),
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Download the database as an Excel spreadsheet for easy review"
+                )
+            else:
+                st.info("No data found in database to export as Excel.")
+        except Exception as e:
+            st.error(f"Error preparing Excel file: {str(e)}")
+
+        # File download section
+        if st.session_state.uploaded_files:
+            st.markdown("---")
+
+        st.markdown("---")
+        # Upload existing database file section (now before IFC upload)
+        uploaded_db = st.file_uploader(
+            "📊 Upload existing SQLite file",
+            type=['db'],
+            accept_multiple_files=False,
+            help="Upload an existing SQLite database file"
+        )
+        if uploaded_db is not None:
+            # Save uploaded DB to a temp file and re-initialize DatabaseManager
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_db:
+                tmp_db.write(uploaded_db.getvalue())
+                tmp_db_path = tmp_db.name
+            # Re-initialize DatabaseManager with the uploaded DB file
+            st.session_state.db_manager = DatabaseManager(tmp_db_path)
+            st.session_state.db_file_path = tmp_db_path
+            st.success(f"Using uploaded database: {uploaded_db.name}")
+            # Optionally clear uploaded files and processors to avoid mismatch
+            st.session_state.uploaded_files = []
+            st.session_state.processors = {}
+
+        st.markdown("---")
         # Multiple file upload
         uploaded_files = st.file_uploader(
             "📂 Upload IFC files",
@@ -92,142 +177,12 @@ def main():
             st.markdown("**Uploaded Files:**")
             for filename in st.session_state.uploaded_files:
                 st.markdown(f"• {filename}")
-                
+            
             # Add clear all files button
             if st.button("🗑️ Clear All Files"):
                 st.session_state.uploaded_files = []
                 st.session_state.processors = {}
                 st.rerun()
-
-        # --- Move: Upload existing database file section here ---
-        st.markdown("---")
-        uploaded_db = st.file_uploader(
-            "📂 Upload existing SQLite file",
-            type=['db'],
-            accept_multiple_files=False,
-            help="Upload an existing SQLite database file"
-        )
-        if uploaded_db is not None:
-            # Save uploaded DB to a temp file and re-initialize DatabaseManager
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_db:
-                tmp_db.write(uploaded_db.getvalue())
-                tmp_db_path = tmp_db.name
-            # Re-initialize DatabaseManager with the uploaded DB file
-            st.session_state.db_manager = DatabaseManager(tmp_db_path)
-            st.session_state.db_file_path = tmp_db_path
-            st.success(f"Using uploaded database: {uploaded_db.name}")
-            # Optionally clear uploaded files and processors to avoid mismatch
-            st.session_state.uploaded_files = []
-            st.session_state.processors = {}
-
-        # Bulk approval by GUID section
-        st.markdown("---")
-        st.subheader("✅ Bulk Approve by GUID")
-        st.markdown("Paste one or more GUIDs (one per line or comma-separated) to approve them in the database.")
-        guid_input = st.text_area(
-            "Enter GUIDs to approve:",
-            placeholder="Paste GUIDs here...",
-            height=100,
-            key="bulk_guid_input"
-        )
-        if st.button("Approve Selected GUIDs"):
-            if guid_input.strip():
-                # Parse GUIDs (split by comma, semicolon, or newline)
-                import re
-                guid_list = [g.strip() for g in re.split(r'[\n,;]+', guid_input) if g.strip()]
-                if guid_list:
-                    # Get current approval column based on user role
-                    role = st.session_state.user_role
-                    approval_col = 'approval_architect' if role == 'architect' else 'approval_structure'
-                    try:
-                        # Get current table
-                        df = st.session_state.db_manager.get_table_data('ifc_objects')
-                        if approval_col in df.columns and 'guid' in df.columns:
-                            # Update approval for matching GUIDs
-                            updated = 0
-                            for guid in guid_list:
-                                idx = df[df['guid'] == guid].index
-                                if not idx.empty:
-                                    df.loc[idx, approval_col] = True
-                                    updated += len(idx)
-                            if updated > 0:
-                                st.session_state.db_manager.update_table_data('ifc_objects', df)
-                                st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
-                            else:
-                                st.warning("No matching GUIDs found in the database.")
-                        else:
-                            st.error("Database does not contain the required columns.")
-                    except Exception as e:
-                        st.error(f"Error updating approvals: {str(e)}")
-                else:
-                    st.warning("No valid GUIDs entered.")
-            else:
-                st.warning("Please enter at least one GUID.")
-
-        # File download section
-        if st.session_state.uploaded_files:
-            st.markdown("---")
-            st.subheader("Export")
-            # .db download button (single, using st.download_button)
-            db_content = st.session_state.db_manager.get_database_content()
-            st.download_button(
-                label="📊 Download Database (.db)",
-                data=db_content,
-                file_name="ifc_data.db",
-                mime="application/octet-stream",
-                help="Download the SQLite database containing the extracted IFC data"
-            )
-            # Excel download button (streamlined, always visible)
-            # Generate Excel in memory and show download button
-            try:
-                df = st.session_state.db_manager.get_table_data('ifc_objects')
-                if not df.empty:
-                    from io import BytesIO
-                    import pandas as pd
-                    excel_buffer = BytesIO()
-                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                        df.to_excel(writer, sheet_name='IFC_Objects', index=False)
-                        # Auto-adjust column widths
-                        worksheet = writer.sheets['IFC_Objects']
-                        for column in worksheet.columns:
-                            max_length = 0
-                            column_letter = column[0].column_letter
-                            for cell in column:
-                                try:
-                                    if len(str(cell.value)) > max_length:
-                                        max_length = len(str(cell.value))
-                                except:
-                                    pass
-                            adjusted_width = min(max_length + 2, 50)
-                            worksheet.column_dimensions[column_letter].width = adjusted_width
-                        # Add a summary sheet
-                        summary_data = {
-                            'Metric': ['Total Objects', 'Active Objects', 'Deleted Objects', 
-                                      'Architect Approved', 'Structure Approved', 'IFC Files'],
-                            'Count': [
-                                len(df),
-                                len(df[df['status'] == 'active']) if 'status' in df.columns else len(df),
-                                len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0,
-                                len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0,
-                                len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0,
-                                df['filename'].nunique() if 'filename' in df.columns else 1
-                            ]
-                        }
-                        summary_df = pd.DataFrame(summary_data)
-                        summary_df.to_excel(writer, sheet_name='Summary', index=False)
-                    excel_buffer.seek(0)
-                    filename = "IFC_Database.xlsx"
-                    st.download_button(
-                        label="📋 Download Database as Excel (.xlsx)",
-                        data=excel_buffer.getvalue(),
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        help="Download the database as an Excel spreadsheet for easy review"
-                    )
-                else:
-                    st.info("No data found in database to export as Excel.")
-            except Exception as e:
-                st.error(f"Error preparing Excel file: {str(e)}")
     
     # Main content area
     if not st.session_state.uploaded_files:
