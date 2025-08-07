@@ -18,6 +18,37 @@ st.set_page_config(
 def main():
     st.title("🏗️ IFC ProvisionForVoid Tracker")
     st.markdown("Upload and manipulate IFC ProvisionForVoid data files with ease")
+
+    # Detailed app description for the user
+    role_display = "Architect" if st.session_state.get('user_role', 'architect') == "architect" else "Structural Engineer"
+    st.markdown(f'''
+**About this tool**
+
+This application tracks **{st.session_state.get('selected_element_type', 'IfcVirtualElement')}** objects from multiple IFC files and manages them with status tracking:
+
+- **Upload multiple IFC files** containing {st.session_state.get('selected_element_type', 'IfcVirtualElement')} objects
+- **Track object status** - automatically detects new and deleted objects between file versions
+- **Manage approvals** - track architect and structural engineer approvals based on your role
+- **Cross-trade coordination** - view and manage objects from all trades in one unified database
+- **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
+- **Export database** - download the complete tracking database with all trades
+
+**Your role: {role_display}**
+- You can edit: {'Architect' if st.session_state.get('user_role', 'architect') == 'architect' else 'Structural Engineer'} approvals
+- You can view: All approvals and object status from all trades
+
+**Key features:**
+- Multi-file upload support
+- Compares new uploads with existing database to detect changes
+- Uses IFC file timestamps for accurate change tracking
+- Maintains object lifecycle with active/deleted status management
+- Role-based approval system for proper workflow management
+- Unified database tracking across multiple IFC files
+
+**Element types supported:**
+- **IfcVirtualElement**: Openings, provisions for voids
+- **IfcBuildingElementProxy**: Generic building elements, placeholders
+''')
     
     # Initialize session state
     if 'processors' not in st.session_state:
@@ -161,26 +192,28 @@ def main():
         if st.session_state.uploaded_files:
             st.markdown("---")
             st.subheader("Export")
-            # .db download button (single, using st.download_button)
+            # .db download button (first instance, unique key)
             db_content = st.session_state.db_manager.get_database_content()
             st.download_button(
                 label="📊 Download Database (.db)",
                 data=db_content,
                 file_name="ifc_database.db",
                 mime="application/octet-stream",
-                help="Download the SQLite database containing the extracted IFC data"
+                help="Download the SQLite database containing the extracted IFC data",
+                key="db_download_button_1"
             )
             # Excel download button (streamlined, always visible)
             st.markdown("---")
             st.subheader("Export")
-            # .db download button (single, using st.download_button)
+            # .db download button (second instance, unique key)
             db_content = st.session_state.db_manager.get_database_content()
             st.download_button(
                 label="📊 Download Database (.db)",
                 data=db_content,
                 file_name="ifc_database.db",
                 mime="application/octet-stream",
-                help="Download the SQLite database containing the extracted IFC data"
+                help="Download the SQLite database containing the extracted IFC data",
+                key="db_download_button_2"
             )
             # Excel download button (streamlined, always visible)
             # Generate Excel in memory and show download button
