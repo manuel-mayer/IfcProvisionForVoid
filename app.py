@@ -121,37 +121,63 @@ def main():
         # --- Bulk Approve section (before Export) ---
         st.markdown("---")
         st.subheader("Bulk Approve Objects")
-        st.markdown("Enter one or more GUIDs (comma, semicolon, or newline separated) to approve in bulk for your current role.")
+        st.markdown("Enter one or more GUIDs (comma, semicolon, or newline separated) to approve in bulk for your current role. Optionally, upload an Excel file with GUIDs (first sheet, any column).")
         guid_input = st.text_area("Enter GUIDs to approve", value="", height=80, help="Paste or type GUIDs separated by comma, semicolon, or newline.")
+        excel_guid_file = st.file_uploader("Or upload Excel file with GUIDs", type=["xlsx"], accept_multiple_files=False, help="Upload an Excel file containing GUIDs to approve. All values in the first sheet will be used.")
         if st.button("✅ Bulk Approve"):
             import re
             guid_list = [g.strip() for g in re.split(r'[\n,;]+', guid_input) if g.strip()]
-            if guid_list:
-                # Get current approval column based on user role
-                role = st.session_state.user_role
-                approval_col = 'approval_architect' if role == 'architect' else 'approval_structure'
+            # If Excel file uploaded, extract all values from first sheet
+            if excel_guid_file is not None:
                 try:
-                    # Get current table
-                    df = st.session_state.db_manager.get_table_data('ifc_objects')
-                    if approval_col in df.columns and 'guid' in df.columns:
-                        # Update approval for matching GUIDs
-                        updated = 0
-                        for guid in guid_list:
-                            idx = df[df['guid'] == guid].index
-                            if not idx.empty:
-                                df.loc[idx, approval_col] = True
-                                updated += len(idx)
-                        if updated > 0:
-                            st.session_state.db_manager.update_table_data('ifc_objects', df)
-                            st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
-                        else:
-                            st.warning("No matching GUIDs found in the database.")
-                    else:
-                        st.error("Database does not contain the required columns.")
+                    import pandas as pd
+                    xls = pd.read_excel(excel_guid_file, sheet_name=0, header=None, dtype=str)
+                    excel_guids = set()
+                    for col in xls.columns:
+                        excel_guids.update(xls[col].dropna().astype(str).str.strip())
+                    guid_list.extend(list(excel_guids))
                 except Exception as e:
-                    st.error(f"Error updating approvals: {str(e)}")
+                    st.error(f"Error reading Excel file: {str(e)}")
+            # Deduplicate and remove empty
+            guid_list = list({g for g in guid_list if g})
+            if guid_list:
+                # Get current approval column based on user role, case-insensitive
+                role = st.session_state.user_role
+                df = st.session_state.db_manager.get_table_data('ifc_objects')
+                col_map = {c.lower(): c for c in df.columns}
+                approval_col = None
+                if role == 'architect':
+                    for c in df.columns:
+                        if c.lower() == 'architectapproval':
+                            approval_col = c
+                            break
+                else:
+                    for c in df.columns:
+                        if c.lower() == 'structuralapproval':
+                            approval_col = c
+                            break
+                guid_col = None
+                for c in df.columns:
+                    if c.lower() == 'ifcguid':
+                        guid_col = c
+                        break
+                if approval_col and guid_col:
+                    # Update approval for matching GUIDs
+                    updated = 0
+                    for guid in guid_list:
+                        idx = df[df[guid_col] == guid].index
+                        if not idx.empty:
+                            df.loc[idx, approval_col] = True
+                            updated += len(idx)
+                    if updated > 0:
+                        st.session_state.db_manager.update_table_data('ifc_objects', df)
+                        st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
+                    else:
+                        st.warning("No matching GUIDs found in the database.")
+                else:
+                    st.error("Database does not contain the required columns (IfcGuid and approval column).")
             else:
-                st.warning("No valid GUIDs entered.")
+                st.warning("No valid GUIDs entered or found in Excel file.")
 
         # --- Write Approvals Back to IFC and Download ---
         st.markdown("---")
@@ -163,6 +189,27 @@ def main():
                     processor = st.session_state.processors[filename]
                     if st.button(f"✍️ Write Approvals & Download for {filename}", key=f"write_ifc_{filename}"):
                         try:
+                            # Ensure only new static approval columns are present for write-back
+                            df = st.session_state.db_manager.get_table_data('ifc_objects')
+                            changed = False
+                            # Copy old to new if needed (for migration)
+                            if 'approval_architect' in df.columns and 'ArchitectApproval' not in df.columns:
+                                df['ArchitectApproval'] = df['approval_architect']
+                                changed = True
+                            if 'approval_structure' in df.columns and 'StructuralApproval' not in df.columns:
+                                df['StructuralApproval'] = df['approval_structure']
+                                changed = True
+                            # Remove old columns if present
+                            drop_cols = []
+                            if 'approval_architect' in df.columns:
+                                drop_cols.append('approval_architect')
+                            if 'approval_structure' in df.columns:
+                                drop_cols.append('approval_structure')
+                            if drop_cols:
+                                df = df.drop(columns=drop_cols)
+                                changed = True
+                            if changed:
+                                st.session_state.db_manager.update_table_data('ifc_objects', df)
                             # Update IFC from database
                             processor.update_ifc_from_database(st.session_state.db_manager)
                             # Get the modified IFC content
@@ -201,8 +248,14 @@ def main():
         # Excel download button (streamlined, always visible)
         # Generate Excel in memory and show download button
         try:
+            import pandas as pd
             df = st.session_state.db_manager.get_table_data('ifc_objects')
             if not df.empty:
+                # Patch: Ensure static approval columns exist for summary
+                if 'approval_architect' in df.columns and 'ArchitectApproval' not in df.columns:
+                    df['ArchitectApproval'] = df['approval_architect']
+                if 'approval_structure' in df.columns and 'StructuralApproval' not in df.columns:
+                    df['StructuralApproval'] = df['approval_structure']
                 excel_buffer = BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                     df.to_excel(writer, sheet_name='IFC_Objects', index=False)
@@ -227,8 +280,8 @@ def main():
                             len(df),
                             len(df[df['status'] == 'active']) if 'status' in df.columns else len(df),
                             len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0,
-                            len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0,
-                            len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0,
+                            len(df[df['ArchitectApproval'] == True]) if 'ArchitectApproval' in df.columns else 0,
+                            len(df[df['StructuralApproval'] == True]) if 'StructuralApproval' in df.columns else 0,
                             df['filename'].nunique() if 'filename' in df.columns else 1
                         ]
                     }

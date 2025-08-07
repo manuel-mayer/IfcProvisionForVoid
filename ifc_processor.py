@@ -317,13 +317,11 @@ class IFCProcessor:
                 pset_name = getattr(st.session_state, 'ifc_writeback_pset', 'Pset_ProvisionForVoid')
                 param_arch = getattr(st.session_state, 'ifc_writeback_param_arch', 'ApprovalArchitect')
                 param_struct = getattr(st.session_state, 'ifc_writeback_param_struct', 'ApprovalStructure')
-                param_status = getattr(st.session_state, 'ifc_writeback_param_status', 'ProvisionStatus')
             except Exception:
                 # Fallback to defaults if not running in Streamlit
                 pset_name = 'Pset_ProvisionForVoid'
                 param_arch = 'ApprovalArchitect'
                 param_struct = 'ApprovalStructure'
-                param_status = 'ProvisionStatus'
 
             tables = db_manager.get_tables()
             for table_name in tables:
