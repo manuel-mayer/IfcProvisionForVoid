@@ -114,12 +114,15 @@ This application tracks **{st.session_state.get('selected_element_type', 'IfcVir
             help="Upload multiple IFC files to process and track in the same database"
         )
         if uploaded_files:
+            rerun_needed = False
             for uploaded_file in uploaded_files:
                 if uploaded_file.name not in st.session_state.uploaded_files:
                     success = process_uploaded_file(uploaded_file, uploaded_file.name)
                     if success:
                         st.session_state.uploaded_files.append(uploaded_file.name)
-                        st.rerun()
+                        rerun_needed = True
+            if rerun_needed:
+                st.rerun()
             st.markdown("**Uploaded Files:**")
             for filename in st.session_state.uploaded_files:
                 st.markdown(f"• {filename}")
