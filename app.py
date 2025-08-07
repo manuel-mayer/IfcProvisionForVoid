@@ -172,9 +172,15 @@ def main():
         if st.session_state.uploaded_files:
             st.markdown("---")
             st.subheader("Export")
-            # .db download button
-            if st.button("📊 Download Database (.db)", help="Download the SQLite database containing the extracted IFC data"):
-                download_database()
+            # .db download button (single, using st.download_button)
+            db_content = st.session_state.db_manager.get_database_content()
+            st.download_button(
+                label="📊 Download Database (.db)",
+                data=db_content,
+                file_name="ifc_data.db",
+                mime="application/octet-stream",
+                help="Download the SQLite database containing the extracted IFC data"
+            )
             # Excel download button (streamlined, always visible)
             # Generate Excel in memory and show download button
             try:
@@ -214,9 +220,7 @@ def main():
                         summary_df = pd.DataFrame(summary_data)
                         summary_df.to_excel(writer, sheet_name='Summary', index=False)
                     excel_buffer.seek(0)
-                    from datetime import datetime
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"IFC_Database_{timestamp}.xlsx"
+                    filename = "IFC_Database.xlsx"
                     st.download_button(
                         label="📋 Download Database as Excel (.xlsx)",
                         data=excel_buffer.getvalue(),
