@@ -71,10 +71,6 @@ def main():
                 st.session_state.uploaded_files = []
                 st.info("Element type changed. Please re-upload your files to process with the new element type.")
 
-        # File download section
-        if st.session_state.uploaded_files:
-            st.markdown("---")
-
         st.markdown("---")
         # Upload existing database file section (now before IFC upload)
         uploaded_db = st.file_uploader(
@@ -96,7 +92,6 @@ def main():
             st.session_state.uploaded_files = []
             st.session_state.processors = {}
 
-        st.markdown("---")
         # Multiple file upload
         uploaded_files = st.file_uploader(
             "📂 Upload IFC files",
