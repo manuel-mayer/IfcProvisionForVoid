@@ -431,18 +431,19 @@ def display_file_interface():
                 st.metric("IFC Files", total_files)
             with col4:
                 st.metric("Total Records", len(df))
-            with col5:
-                if 'approval_architect' in df.columns:
-                    arch_approved = len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0
-                    st.metric("Architect Approved", arch_approved)
-                else:
-                    st.metric("Architect Approved", "N/A")
-            with col6:
-                if 'approval_structure' in df.columns:
-                    struct_approved = len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0
-                    st.metric("Structure Approved", struct_approved)
-                else:
-                    st.metric("Structure Approved", "N/A")
+            # Use static approval column names as defined in the database
+            arch_col = 'ArchitectApproval'
+            struct_col = 'StructuralApproval'
+            if arch_col in df.columns:
+                arch_approved = df[arch_col].apply(lambda v: (isinstance(v, bool) and v) or (isinstance(v, (int, float)) and v == 1) or (isinstance(v, str) and v.strip().lower() == 'true')).sum()
+                col5.metric(f"{arch_col} Approved", int(arch_approved))
+            else:
+                col5.metric(f"{arch_col} Approved", "N/A")
+            if struct_col in df.columns:
+                struct_approved = df[struct_col].apply(lambda v: (isinstance(v, bool) and v) or (isinstance(v, (int, float)) and v == 1) or (isinstance(v, str) and v.strip().lower() == 'true')).sum()
+                col6.metric(f"{struct_col} Approved", int(struct_approved))
+            else:
+                col6.metric(f"{struct_col} Approved", "N/A")
             
             # Display the table (user-selected number of rows)
             display_ifc_objects_table(display_df)
