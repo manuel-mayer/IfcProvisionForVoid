@@ -153,6 +153,35 @@ def main():
             else:
                 st.warning("No valid GUIDs entered.")
 
+        # --- Write Approvals Back to IFC and Download ---
+        st.markdown("---")
+        st.subheader("Write Approvals to IFC & Download")
+        st.markdown("Update the approval state in the original IFC files and download the modified versions.")
+        if st.session_state.uploaded_files:
+            for filename in st.session_state.uploaded_files:
+                if filename in st.session_state.processors:
+                    processor = st.session_state.processors[filename]
+                    if st.button(f"✍️ Write Approvals & Download for {filename}", key=f"write_ifc_{filename}"):
+                        try:
+                            # Update IFC from database
+                            processor.update_ifc_from_database(st.session_state.db_manager)
+                            # Get the modified IFC content
+                            ifc_content = processor.get_ifc_content()
+                            if ifc_content:
+                                st.download_button(
+                                    label=f"📥 Download Modified IFC: {filename}",
+                                    data=ifc_content,
+                                    file_name=f"modified_{filename}",
+                                    mime="application/octet-stream",
+                                    help="Download the IFC file with updated approvals"
+                                )
+                            else:
+                                st.error(f"Failed to generate modified IFC for {filename}")
+                        except Exception as e:
+                            st.error(f"Error writing approvals to IFC for {filename}: {str(e)}")
+        else:
+            st.info("No IFC files uploaded to write approvals.")
+
         # --- Export section at the bottom ---
         st.markdown("---")
         st.subheader("Export")
