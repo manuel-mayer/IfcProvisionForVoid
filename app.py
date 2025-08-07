@@ -171,7 +171,7 @@ def main():
                                 st.download_button(
                                     label=f"📥 Download Modified IFC: {filename}",
                                     data=ifc_content,
-                                    file_name=f"modified_{filename}",
+                                    file_name=f"{filename}_modified",
                                     mime="application/octet-stream",
                                     help="Download the IFC file with updated approvals"
                                 )
@@ -231,7 +231,7 @@ def main():
                     summary_df = pd.DataFrame(summary_data)
                     summary_df.to_excel(writer, sheet_name='Summary', index=False)
                 excel_buffer.seek(0)
-                filename = "IFC_Database.xlsx"
+                filename = "ifc_database.xlsx"
                 st.download_button(
                     label="📋 Download Database as Excel (.xlsx)",
                     data=excel_buffer.getvalue(),
