@@ -19,8 +19,8 @@ def main():
     st.title("🏗️ IFC ProvisionForVoid Tracker")
     st.markdown("Upload and manipulate IFC ProvisionForVoid data files with ease")
 
-    # Show app description only if no IFC files are uploaded
-    if not st.session_state.get('uploaded_files'):
+    # Show app description only if no IFC files are uploaded (uploaded_files must be non-empty and processed)
+    if not st.session_state.get('uploaded_files') or len(st.session_state.get('uploaded_files', [])) == 0:
         role_display = "Architect" if st.session_state.get('user_role', 'architect') == "architect" else "Structural Engineer"
         st.markdown(f'''
 **About this tool**
@@ -116,8 +116,10 @@ This application tracks **{st.session_state.get('selected_element_type', 'IfcVir
         if uploaded_files:
             for uploaded_file in uploaded_files:
                 if uploaded_file.name not in st.session_state.uploaded_files:
-                    st.session_state.uploaded_files.append(uploaded_file.name)
-                    process_uploaded_file(uploaded_file, uploaded_file.name)
+                    success = process_uploaded_file(uploaded_file, uploaded_file.name)
+                    if success:
+                        st.session_state.uploaded_files.append(uploaded_file.name)
+                        st.rerun()
             st.markdown("**Uploaded Files:**")
             for filename in st.session_state.uploaded_files:
                 st.markdown(f"• {filename}")
@@ -133,35 +135,25 @@ def process_uploaded_file(uploaded_file, original_filename):
     """Process the uploaded IFC file"""
     try:
         with st.spinner("Processing IFC file..."):
-            # Create temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file_path = tmp_file.name
-            
-            # Initialize processor for this file
             processor = IFCProcessor(tmp_file_path)
-            
-            # Process the file with selected element type and original filename
             success = processor.load_ifc_to_database(
-                st.session_state.db_manager, 
+                st.session_state.db_manager,
                 st.session_state.selected_element_type,
                 original_filename
             )
-            
-            # Store processor for this file
             if success:
                 st.session_state.processors[original_filename] = processor
-            
-            if success:
                 st.success(f"✅ Successfully processed '{uploaded_file.name}'")
             else:
                 st.error(f"❌ Failed to process '{uploaded_file.name}'")
-            
-            # Clean up temporary file
             os.unlink(tmp_file_path)
-            
+            return success
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
+        return False
 
 def display_file_interface():
     """Display the main interface for file manipulation"""
