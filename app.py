@@ -39,27 +39,6 @@ def main():
     with st.sidebar:
         st.header("File Operations")
 
-        # --- New: Upload existing database file ---
-        st.subheader("📂 Use Existing Database")
-        uploaded_db = st.file_uploader(
-            "Upload SQLite .db file",
-            type=['db'],
-            accept_multiple_files=False,
-            help="Upload an existing SQLite database file to use instead of a new one"
-        )
-        if uploaded_db is not None:
-            # Save uploaded DB to a temp file and re-initialize DatabaseManager
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_db:
-                tmp_db.write(uploaded_db.getvalue())
-                tmp_db_path = tmp_db.name
-            # Re-initialize DatabaseManager with the uploaded DB file
-            st.session_state.db_manager = DatabaseManager(tmp_db_path)
-            st.session_state.db_file_path = tmp_db_path
-            st.success(f"Using uploaded database: {uploaded_db.name}")
-            # Optionally clear uploaded files and processors to avoid mismatch
-            st.session_state.uploaded_files = []
-            st.session_state.processors = {}
-
         # User role selection
         st.subheader("👤 User Profile")
         user_role = st.selectbox(
@@ -122,7 +101,29 @@ def main():
                 st.session_state.uploaded_files = []
                 st.session_state.processors = {}
                 st.rerun()
-        
+
+        # --- Move: Upload existing database file section here ---
+        st.markdown("---")
+        st.subheader("📂 Use Existing Database")
+        uploaded_db = st.file_uploader(
+            "Upload SQLite .db file",
+            type=['db'],
+            accept_multiple_files=False,
+            help="Upload an existing SQLite database file to use instead of a new one"
+        )
+        if uploaded_db is not None:
+            # Save uploaded DB to a temp file and re-initialize DatabaseManager
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_db:
+                tmp_db.write(uploaded_db.getvalue())
+                tmp_db_path = tmp_db.name
+            # Re-initialize DatabaseManager with the uploaded DB file
+            st.session_state.db_manager = DatabaseManager(tmp_db_path)
+            st.session_state.db_file_path = tmp_db_path
+            st.success(f"Using uploaded database: {uploaded_db.name}")
+            # Optionally clear uploaded files and processors to avoid mismatch
+            st.session_state.uploaded_files = []
+            st.session_state.processors = {}
+
         # File download section
         if st.session_state.uploaded_files:
             st.markdown("---")
