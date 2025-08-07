@@ -147,6 +147,13 @@ def process_uploaded_file(uploaded_file, original_filename):
                 st.session_state.selected_element_type,
                 original_filename
             )
+            # Debug: print the ifc_objects table after processing
+            try:
+                df_debug = st.session_state.db_manager.get_table_data('ifc_objects')
+                st.write('**DEBUG: ifc_objects table after upload:**')
+                st.write(df_debug)
+            except Exception as debug_e:
+                st.write(f'**DEBUG: Error reading ifc_objects table:** {debug_e}')
             if success:
                 st.session_state.processors[original_filename] = processor
                 st.success(f"✅ Successfully processed '{uploaded_file.name}'")
