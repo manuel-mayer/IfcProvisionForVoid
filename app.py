@@ -87,8 +87,6 @@ def main():
             st.session_state.uploaded_files = []
             st.session_state.processors = {}
 
-        st.markdown("---")
-
         # Multiple file upload
         uploaded_files = st.file_uploader(
             "📂 Upload IFC files:",
