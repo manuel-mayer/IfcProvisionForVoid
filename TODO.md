@@ -1,13 +1,14 @@
 # TODO List for IfcProvisionForVoid
 
-- [ ] match ifcGuid across different file names, so no duplicated guids
-- [ ] give user options for pset and parameter names when database is written back to ifc
-- [ ] write building storey to the database after filename
+- [x] match ifcGuid across different file names, so no duplicated Guids
+- [x] give user options for pset and parameter names when database is written back to ifc
+- [x] write building storey to the database after filename
 - [ ] display database statistic: percent of approved per building storey
 - [ ] test with multiple ifc files for H,L,S,E
 - [ ] test with existing database, multiple iterations
 - [ ] test ifc2x3, ifc4 and ifc4x3
 - [ ] test with bigger project > 500 objects
+- [ ] test pset and attribute name for writeback
 - [ ] make bulk approval field accept excel files, always use first table in excel file 
 - [ ] check hosting options for database
 - [ ] check import export options for revit with dynamo for approval status

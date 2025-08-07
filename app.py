@@ -286,6 +286,30 @@ def main():
         # Show file processing interface
         display_file_interface()
 
+        # --- Write-back Pset/Parameter selection (bottom, not sidebar) ---
+        st.markdown("---")
+        st.subheader("IFC Write-back Settings")
+        st.markdown("Select the Property Set (Pset) and attribute names to which approval info will be written back into the IFC.")
+
+        # Defaults (user requested, status removed)
+        default_pset = "Planung"
+        default_arch_param = "Architektur_Freigabe"
+        default_struct_param = "Tragwerksplanung_Freigabe"
+
+        # Let user override (status removed)
+        col_pset, col_arch, col_struct = st.columns(3)
+        with col_pset:
+            pset_name = st.text_input("Property Set (Pset)", value=default_pset, help="IFC property set to write approval info to.")
+        with col_arch:
+            param_arch = st.text_input("Architect Approval Attribute", value=default_arch_param, help="Attribute name for architectural approval.")
+        with col_struct:
+            param_struct = st.text_input("Structural Approval Attribute", value=default_struct_param, help="Attribute name for structural engineer approval.")
+
+        # Store in session state for use in write-back logic (status removed)
+        st.session_state.ifc_writeback_pset = pset_name
+        st.session_state.ifc_writeback_param_arch = param_arch
+        st.session_state.ifc_writeback_param_struct = param_struct
+
 def process_uploaded_file(uploaded_file, original_filename):
     """Process the uploaded IFC file"""
     try:

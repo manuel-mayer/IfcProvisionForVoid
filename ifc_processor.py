@@ -306,61 +306,70 @@ class IFCProcessor:
             return None
     
     def update_ifc_from_database(self, db_manager) -> bool:
-        """Update the IFC model with data from the database"""
+        """Update the IFC model with data from the database, using user-selected Pset/param names if available."""
         try:
             if not self.ifc_model:
                 return False
-            
+
+            # Get user-selected Pset/param names from Streamlit session state if available
+            try:
+                import streamlit as st
+                pset_name = getattr(st.session_state, 'ifc_writeback_pset', 'Pset_ProvisionForVoid')
+                param_arch = getattr(st.session_state, 'ifc_writeback_param_arch', 'ApprovalArchitect')
+                param_struct = getattr(st.session_state, 'ifc_writeback_param_struct', 'ApprovalStructure')
+                param_status = getattr(st.session_state, 'ifc_writeback_param_status', 'ProvisionStatus')
+            except Exception:
+                # Fallback to defaults if not running in Streamlit
+                pset_name = 'Pset_ProvisionForVoid'
+                param_arch = 'ApprovalArchitect'
+                param_struct = 'ApprovalStructure'
+                param_status = 'ProvisionStatus'
+
             tables = db_manager.get_tables()
-            
             for table_name in tables:
-                self._update_entities_from_table(table_name, db_manager)
-            
+                self._update_entities_from_table(table_name, db_manager, pset_name, param_arch, param_struct, param_status)
             return True
-        
         except Exception as e:
             logging.error(f"Error updating IFC from database: {str(e)}")
             return False
     
-    def _update_entities_from_table(self, table_name: str, db_manager):
-        """Update entities of a specific type from database table"""
+    def _update_entities_from_table(self, table_name: str, db_manager, pset_name, param_arch, param_struct, param_status):
+        """Update entities of a specific type from database table, writing to user-selected Pset/param names."""
         try:
             df = db_manager.get_table_data(table_name)
-            
             if df.empty:
                 return
-            
             for _, row in df.iterrows():
-                global_id = row.get('GlobalId')
+                # Use IfcGuid for main table, fallback to GlobalId for others
+                global_id = row.get('IfcGuid') or row.get('GlobalId')
                 if not global_id:
                     continue
-                
-                # Find the entity in the IFC model
                 try:
                     entities = self.ifc_model.by_guid(global_id)
                     if not entities:
-                        # Try to find by ID if GUID lookup fails
                         continue
-                    
                     entity = entities if not isinstance(entities, list) else entities[0]
-                    
-                    # Update entity properties
-                    for column, value in row.items():
-                        if column in ['GlobalId', 'EntityType'] or value is None:
-                            continue
-                        
-                        try:
-                            if hasattr(entity, column):
-                                # Only update simple attribute types
-                                if isinstance(value, (str, int, float, bool)):
-                                    setattr(entity, column, value)
-                        except Exception as attr_error:
-                            logging.warning(f"Could not update attribute {column}: {str(attr_error)}")
-                
+
+                    # Write to Pset/param as selected by user (never write back status)
+                    try:
+                        psets = entity.get_psets() if hasattr(entity, 'get_psets') else {}
+                        pset = psets.get(pset_name)
+                        if not pset and hasattr(entity, 'add_property_set'):
+                            entity.add_property_set(pset_name)
+                            psets = entity.get_psets()
+                            pset = psets.get(pset_name)
+                        if pset is not None:
+                            # Write only approval values, never status
+                            if param_arch and 'ArchitectApproval' in row:
+                                pset[param_arch] = row['ArchitectApproval']
+                            if param_struct and 'StructuralApproval' in row:
+                                pset[param_struct] = row['StructuralApproval']
+                    except Exception as pset_error:
+                        logging.warning(f"Could not write to Pset: {str(pset_error)}")
+
                 except Exception as entity_error:
                     logging.warning(f"Could not find/update entity {global_id}: {str(entity_error)}")
                     continue
-        
         except Exception as e:
             logging.error(f"Error updating entities from table {table_name}: {str(e)}")
     
