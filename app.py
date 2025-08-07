@@ -118,6 +118,41 @@ def main():
                 st.session_state.processors = {}
                 st.rerun()
 
+        # --- Bulk Approve section (before Export) ---
+        st.markdown("---")
+        st.subheader("Bulk Approve Objects")
+        st.markdown("Enter one or more GUIDs (comma, semicolon, or newline separated) to approve in bulk for your current role.")
+        guid_input = st.text_area("Enter GUIDs to approve", value="", height=80, help="Paste or type GUIDs separated by comma, semicolon, or newline.")
+        if st.button("✅ Bulk Approve"):
+            import re
+            guid_list = [g.strip() for g in re.split(r'[\n,;]+', guid_input) if g.strip()]
+            if guid_list:
+                # Get current approval column based on user role
+                role = st.session_state.user_role
+                approval_col = 'approval_architect' if role == 'architect' else 'approval_structure'
+                try:
+                    # Get current table
+                    df = st.session_state.db_manager.get_table_data('ifc_objects')
+                    if approval_col in df.columns and 'guid' in df.columns:
+                        # Update approval for matching GUIDs
+                        updated = 0
+                        for guid in guid_list:
+                            idx = df[df['guid'] == guid].index
+                            if not idx.empty:
+                                df.loc[idx, approval_col] = True
+                                updated += len(idx)
+                        if updated > 0:
+                            st.session_state.db_manager.update_table_data('ifc_objects', df)
+                            st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
+                        else:
+                            st.warning("No matching GUIDs found in the database.")
+                    else:
+                        st.error("Database does not contain the required columns.")
+                except Exception as e:
+                    st.error(f"Error updating approvals: {str(e)}")
+            else:
+                st.warning("No valid GUIDs entered.")
+
         # --- Export section at the bottom ---
         st.markdown("---")
         st.subheader("Export")
