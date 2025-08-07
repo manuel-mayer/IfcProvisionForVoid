@@ -31,7 +31,7 @@ class IFCProcessor:
             if not self.ifc_model:
                 return False
 
-            # Create the main tracking table based on your schema
+            # Always create the main tracking table based on your schema
             self._create_ifc_objects_table(db_manager)
 
             # If requested, clear the ifc_objects table for a fresh start
@@ -55,7 +55,24 @@ class IFCProcessor:
                 return True
 
             # Process the elements using your workflow
-            return self._process_elements(elements, ifc_filename, ifc_creation_date, db_manager, element_type)
+            result = self._process_elements(elements, ifc_filename, ifc_creation_date, db_manager, element_type)
+
+            # After processing, ensure approval columns are boolean
+            import pandas as pd
+            try:
+                df = db_manager.get_table_data('ifc_objects')
+                changed = False
+                for col in ['ArchitectApproval', 'StructuralApproval']:
+                    if col in df.columns and df[col].dtype != bool:
+                        # Accept 1/0, 'True'/'False', True/False, etc.
+                        df[col] = df[col].apply(lambda v: True if (v is True or v == 1 or (isinstance(v, str) and v.strip().lower() == 'true')) else False)
+                        changed = True
+                if changed:
+                    db_manager.update_table_data('ifc_objects', df)
+            except Exception as e:
+                logging.warning(f"Could not coerce approval columns to boolean: {str(e)}")
+
+            return result
 
         except Exception as e:
             logging.error(f"Error loading IFC to database: {str(e)}")
@@ -325,13 +342,13 @@ class IFCProcessor:
 
             tables = db_manager.get_tables()
             for table_name in tables:
-                self._update_entities_from_table(table_name, db_manager, pset_name, param_arch, param_struct, param_status)
+                self._update_entities_from_table(table_name, db_manager, pset_name, param_arch, param_struct)
             return True
         except Exception as e:
             logging.error(f"Error updating IFC from database: {str(e)}")
             return False
     
-    def _update_entities_from_table(self, table_name: str, db_manager, pset_name, param_arch, param_struct, param_status):
+    def _update_entities_from_table(self, table_name: str, db_manager, pset_name, param_arch, param_struct):
         """Update entities of a specific type from database table, writing to user-selected Pset/param names."""
         try:
             df = db_manager.get_table_data(table_name)
