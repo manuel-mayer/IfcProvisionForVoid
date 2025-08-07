@@ -348,3 +348,14 @@ class IFCProcessor:
         except Exception as e:
             logging.error(f"Error getting model info: {str(e)}")
             return {}
+    
+    def set_database_file(self, db_manager, db_file_path: str):
+        """Switch the database manager to use a new database file."""
+        try:
+            if db_manager.connection:
+                db_manager.connection.close()
+            db_manager.connection = sqlite3.connect(db_file_path)
+            logging.info(f"Database switched to {db_file_path}")
+        except Exception as e:
+            logging.error(f"Error switching database file: {str(e)}")
+            raise
