@@ -7,6 +7,12 @@ import logging
 from datetime import datetime
 
 class IFCProcessor:
+    def coerce_approval_columns_to_bool(self, df):
+        """Ensure ArchitectApproval and StructuralApproval columns are true booleans for Streamlit checkboxes."""
+        for col in ['ArchitectApproval', 'StructuralApproval']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda v: True if (v is True or v == 1 or (isinstance(v, str) and v.strip().lower() == 'true')) else False)
+        return df
     """Handles IFC file processing and database operations"""
     
     def __init__(self, ifc_file_path: str):

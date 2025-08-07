@@ -474,13 +474,22 @@ def display_file_interface():
             # Display summary statistics (use full df for stats)
             col1, col2, col3, col4, col5, col6 = st.columns(6)
             with col1:
-                active_count = len(df[df['status'] == 'active']) if 'status' in df.columns else len(df)
+                if 'Status' in df.columns:
+                    active_count = len(df[df['Status'] == 'active'])
+                else:
+                    active_count = len(df)
                 st.metric("Active Objects", active_count)
             with col2:
-                deleted_count = len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0
+                if 'Status' in df.columns:
+                    deleted_count = len(df[df['Status'] == 'deleted'])
+                else:
+                    deleted_count = 0
                 st.metric("Deleted Objects", deleted_count)
             with col3:
-                total_files = df['filename'].nunique() if 'filename' in df.columns else 1
+                if 'Filename' in df.columns:
+                    total_files = df['Filename'].nunique()
+                else:
+                    total_files = 1
                 st.metric("IFC Files", total_files)
             with col4:
                 st.metric("Total Records", len(df))
@@ -590,31 +599,51 @@ def display_ifc_objects_table(df):
         
         # Filter options
         with st.expander("🔍 Filter Options"):
-            col1, col2, col3 = st.columns(3)
-            
+            col1, col2, col3, col4 = st.columns(4)
+
             with col1:
-                # Status filter
-                status_options = ['All'] + list(df['status'].unique()) if 'status' in df.columns else ['All']
+                # Status filter (static column name 'Status')
+                if 'Status' in df.columns:
+                    status_values = df['Status'].dropna().astype(str).unique()
+                    status_options = ['All'] + sorted(set(status_values))
+                else:
+                    status_options = ['All']
                 selected_status = st.selectbox("Filter by Status:", status_options)
-                
+
             with col2:
-                # Filename filter
-                filename_options = ['All'] + list(df['filename'].unique()) if 'filename' in df.columns else ['All']
+                # Filename filter (static column name 'Filename')
+                if 'Filename' in df.columns:
+                    filename_values = df['Filename'].dropna().astype(str).unique()
+                    filename_options = ['All'] + sorted(set(filename_values))
+                else:
+                    filename_options = ['All']
                 selected_filename = st.selectbox("Filter by File:", filename_options)
-                
+
             with col3:
+                # BuildingStorey filter (static column name 'BuildingStorey')
+                if 'BuildingStorey' in df.columns:
+                    storey_values = df['BuildingStorey'].dropna().astype(str).unique()
+                    storey_options = ['All'] + sorted(set(storey_values))
+                else:
+                    storey_options = ['All']
+                selected_storey = st.selectbox("Filter by Building Storey:", storey_options)
+
+            with col4:
                 # Date range
                 if 'added_timestamp' in df.columns:
                     show_date_filter = st.checkbox("Filter by Date Range")
-        
+
         # Apply filters
         filtered_df = df.copy()
-        
-        if selected_status != 'All' and 'status' in df.columns:
-            filtered_df = filtered_df[filtered_df['status'] == selected_status]
-        
-        if selected_filename != 'All' and 'filename' in df.columns:
-            filtered_df = filtered_df[filtered_df['filename'] == selected_filename]
+
+        if selected_status != 'All' and 'Status' in df.columns:
+            filtered_df = filtered_df[filtered_df['Status'].astype(str) == str(selected_status)]
+
+        if selected_filename != 'All' and 'Filename' in df.columns:
+            filtered_df = filtered_df[filtered_df['Filename'].astype(str) == str(selected_filename)]
+
+        if 'BuildingStorey' in df.columns and selected_storey != 'All':
+            filtered_df = filtered_df[filtered_df['BuildingStorey'].astype(str) == str(selected_storey)]
         
         # Display filtered data
         if not filtered_df.empty:
@@ -622,44 +651,44 @@ def display_ifc_objects_table(df):
             column_config = {}
             disabled_cols = ['guid']  # GUID should not be editable
             user_role = st.session_state.user_role
-            
+
             # Show role-based info
             role_display = "Architect" if user_role == "architect" else "Structural Engineer"
             st.info(f"👤 Logged in as: **{role_display}** - You can edit {role_display.lower()} approvals")
-            
-            if 'approval_architect' in filtered_df.columns:
+
+            if 'ArchitectApproval' in filtered_df.columns:
                 if user_role == 'architect':
-                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
+                    column_config['ArchitectApproval'] = st.column_config.CheckboxColumn(
                         "Architect Approval ✓",
                         help="Toggle architect approval (you can edit this)"
                     )
                 else:
-                    disabled_cols.append('approval_architect')
-                    column_config['approval_architect'] = st.column_config.CheckboxColumn(
+                    disabled_cols.append('ArchitectApproval')
+                    column_config['ArchitectApproval'] = st.column_config.CheckboxColumn(
                         "Architect Approval (read-only)",
                         help="Only architects can edit this approval"
                     )
-            
-            if 'approval_structure' in filtered_df.columns:
+
+            if 'StructuralApproval' in filtered_df.columns:
                 if user_role == 'structural_engineer':
-                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
+                    column_config['StructuralApproval'] = st.column_config.CheckboxColumn(
                         "Structural Approval ✓", 
                         help="Toggle structural engineer approval (you can edit this)"
                     )
                 else:
-                    disabled_cols.append('approval_structure')
-                    column_config['approval_structure'] = st.column_config.CheckboxColumn(
+                    disabled_cols.append('StructuralApproval')
+                    column_config['StructuralApproval'] = st.column_config.CheckboxColumn(
                         "Structural Approval (read-only)",
                         help="Only structural engineers can edit this approval"
                     )
-            
+
             if 'status' in filtered_df.columns:
                 column_config['status'] = st.column_config.SelectboxColumn(
                     "Status",
                     options=['active', 'deleted'],
                     help="Object status (all users can edit)"
                 )
-            
+
             # Data editor
             edited_df = st.data_editor(
                 filtered_df,
@@ -669,7 +698,7 @@ def display_ifc_objects_table(df):
                 hide_index=True,
                 key="ifc_objects_editor"
             )
-            
+
             # Save and Purge buttons in line with a spacer
             btn_col1, btn_spacer, btn_col2 = st.columns([2, 0.2, 2])
             with btn_col1:
@@ -692,7 +721,6 @@ def display_ifc_objects_table(df):
 
             # Show record count
             st.caption(f"Showing {len(filtered_df)} of {len(df)} total records")
-            
         else:
             st.info("No records match the current filters.")
             
