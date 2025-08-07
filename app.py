@@ -37,8 +37,6 @@ def main():
 
     # Sidebar for file operations
     with st.sidebar:
-        st.header("File Operations")
-
         # User role selection
         st.subheader("👤 User Profile")
         user_role = st.selectbox(
@@ -48,14 +46,10 @@ def main():
             format_func=lambda x: "Architect" if x == "architect" else "Structural Engineer",
             help="Your role determines which approvals you can set in the database"
         )
-        
         # Update user role in session state
         if user_role != st.session_state.user_role:
             st.session_state.user_role = user_role
             st.success(f"Role changed to: {'Architect' if user_role == 'architect' else 'Structural Engineer'}")
-        
-        st.markdown("---")
-        
         # Element type selection
         st.subheader("🔧 Processing Options")
         element_type = st.selectbox(
@@ -102,8 +96,7 @@ def main():
                 st.session_state.processors = {}
                 st.rerun()
 
-        # --- Move: Upload existing database file section here ---
-        st.markdown("---")
+        # Upload existing database file section (no divider)
         st.subheader("📂 Use Existing Database")
         uploaded_db = st.file_uploader(
             "Upload SQLite file",
@@ -124,49 +117,50 @@ def main():
             st.session_state.uploaded_files = []
             st.session_state.processors = {}
 
-        # Bulk approval by GUID section
-        st.markdown("---")
-        st.subheader("✅ Bulk Approve by GUID")
-        st.markdown("Paste one or more GUIDs (one per line or comma-separated) to approve them in the database.")
-        guid_input = st.text_area(
-            "Enter GUIDs to approve:",
-            placeholder="Paste GUIDs here...",
-            height=100,
-            key="bulk_guid_input"
-        )
-        if st.button("Approve Selected GUIDs"):
-            if guid_input.strip():
-                # Parse GUIDs (split by comma, semicolon, or newline)
-                import re
-                guid_list = [g.strip() for g in re.split(r'[\n,;]+', guid_input) if g.strip()]
-                if guid_list:
-                    # Get current approval column based on user role
-                    role = st.session_state.user_role
-                    approval_col = 'approval_architect' if role == 'architect' else 'approval_structure'
-                    try:
-                        # Get current table
-                        df = st.session_state.db_manager.get_table_data('ifc_objects')
-                        if approval_col in df.columns and 'guid' in df.columns:
-                            # Update approval for matching GUIDs
-                            updated = 0
-                            for guid in guid_list:
-                                idx = df[df['guid'] == guid].index
-                                if not idx.empty:
-                                    df.loc[idx, approval_col] = True
-                                    updated += len(idx)
-                            if updated > 0:
-                                st.session_state.db_manager.update_table_data('ifc_objects', df)
-                                st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
+        # Bulk approval by GUID section (only if IFC files uploaded)
+        if st.session_state.uploaded_files:
+            st.markdown("---")
+            st.subheader("✅ Bulk Approve by GUID")
+            st.markdown("Paste one or more GUIDs (one per line or comma-separated) to approve them in the database.")
+            guid_input = st.text_area(
+                "Enter GUIDs to approve:",
+                placeholder="Paste GUIDs here...",
+                height=100,
+                key="bulk_guid_input"
+            )
+            if st.button("Approve Selected GUIDs"):
+                if guid_input.strip():
+                    # Parse GUIDs (split by comma, semicolon, or newline)
+                    import re
+                    guid_list = [g.strip() for g in re.split(r'[\n,;]+', guid_input) if g.strip()]
+                    if guid_list:
+                        # Get current approval column based on user role
+                        role = st.session_state.user_role
+                        approval_col = 'approval_architect' if role == 'architect' else 'approval_structure'
+                        try:
+                            # Get current table
+                            df = st.session_state.db_manager.get_table_data('ifc_objects')
+                            if approval_col in df.columns and 'guid' in df.columns:
+                                # Update approval for matching GUIDs
+                                updated = 0
+                                for guid in guid_list:
+                                    idx = df[df['guid'] == guid].index
+                                    if not idx.empty:
+                                        df.loc[idx, approval_col] = True
+                                        updated += len(idx)
+                                if updated > 0:
+                                    st.session_state.db_manager.update_table_data('ifc_objects', df)
+                                    st.success(f"Approved {updated} object(s) for role: {'Architect' if role == 'architect' else 'Structural Engineer'}.")
+                                else:
+                                    st.warning("No matching GUIDs found in the database.")
                             else:
-                                st.warning("No matching GUIDs found in the database.")
-                        else:
-                            st.error("Database does not contain the required columns.")
-                    except Exception as e:
-                        st.error(f"Error updating approvals: {str(e)}")
+                                st.error("Database does not contain the required columns.")
+                        except Exception as e:
+                            st.error(f"Error updating approvals: {str(e)}")
+                    else:
+                        st.warning("No valid GUIDs entered.")
                 else:
-                    st.warning("No valid GUIDs entered.")
-            else:
-                st.warning("Please enter at least one GUID.")
+                    st.warning("Please enter at least one GUID.")
 
         # File download section
         if st.session_state.uploaded_files:
