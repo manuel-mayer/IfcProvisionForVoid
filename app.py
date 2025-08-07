@@ -19,9 +19,10 @@ def main():
     st.title("🏗️ IFC ProvisionForVoid Tracker")
     st.markdown("Upload and manipulate IFC ProvisionForVoid data files with ease")
 
-    # Detailed app description for the user
-    role_display = "Architect" if st.session_state.get('user_role', 'architect') == "architect" else "Structural Engineer"
-    st.markdown(f'''
+    # Show app description only if no IFC files are uploaded
+    if not st.session_state.get('uploaded_files'):
+        role_display = "Architect" if st.session_state.get('user_role', 'architect') == "architect" else "Structural Engineer"
+        st.markdown(f'''
 **About this tool**
 
 This application tracks **{st.session_state.get('selected_element_type', 'IfcVirtualElement')}** objects from multiple IFC files and manages them with status tracking:
@@ -192,7 +193,7 @@ This application tracks **{st.session_state.get('selected_element_type', 'IfcVir
         if st.session_state.uploaded_files:
             st.markdown("---")
             st.subheader("Export")
-            # .db download button (first instance, unique key)
+            # .db download button (single instance)
             db_content = st.session_state.db_manager.get_database_content()
             st.download_button(
                 label="📊 Download Database (.db)",
@@ -200,20 +201,7 @@ This application tracks **{st.session_state.get('selected_element_type', 'IfcVir
                 file_name="ifc_database.db",
                 mime="application/octet-stream",
                 help="Download the SQLite database containing the extracted IFC data",
-                key="db_download_button_1"
-            )
-            # Excel download button (streamlined, always visible)
-            st.markdown("---")
-            st.subheader("Export")
-            # .db download button (second instance, unique key)
-            db_content = st.session_state.db_manager.get_database_content()
-            st.download_button(
-                label="📊 Download Database (.db)",
-                data=db_content,
-                file_name="ifc_database.db",
-                mime="application/octet-stream",
-                help="Download the SQLite database containing the extracted IFC data",
-                key="db_download_button_2"
+                key="db_download_button"
             )
             # Excel download button (streamlined, always visible)
             # Generate Excel in memory and show download button
