@@ -328,23 +328,24 @@ class IFCProcessor:
             logging.error(f"Error converting entity to row: {str(e)}")
             return None
     
-    def update_ifc_from_database(self, db_manager) -> bool:
-        """Update the IFC model with data from the database, using user-selected Pset/param names if available."""
+    def update_ifc_from_database(self, db_manager, pset_name=None, param_arch=None, param_struct=None) -> bool:
+        """Update the IFC model with data from the database, using user-selected Pset/param names if available.
+        If names are not provided, fallback to Streamlit session state or defaults."""
         try:
             if not self.ifc_model:
                 return False
 
-            # Get user-selected Pset/param names from Streamlit session state if available
-            try:
-                import streamlit as st
-                pset_name = getattr(st.session_state, 'ifc_writeback_pset', 'Pset_ProvisionForVoid')
-                param_arch = getattr(st.session_state, 'ifc_writeback_param_arch', 'ApprovalArchitect')
-                param_struct = getattr(st.session_state, 'ifc_writeback_param_struct', 'ApprovalStructure')
-            except Exception:
-                # Fallback to defaults if not running in Streamlit
-                pset_name = 'Pset_ProvisionForVoid'
-                param_arch = 'ApprovalArchitect'
-                param_struct = 'ApprovalStructure'
+            # Always use the latest user input if provided
+            if pset_name is None or param_arch is None or param_struct is None:
+                try:
+                    import streamlit as st
+                    pset_name = pset_name or getattr(st.session_state, 'ifc_writeback_pset', 'Pset_ProvisionForVoid')
+                    param_arch = param_arch or getattr(st.session_state, 'ifc_writeback_param_arch', 'ApprovalArchitect')
+                    param_struct = param_struct or getattr(st.session_state, 'ifc_writeback_param_struct', 'ApprovalStructure')
+                except Exception:
+                    pset_name = pset_name or 'Pset_ProvisionForVoid'
+                    param_arch = param_arch or 'ApprovalArchitect'
+                    param_struct = param_struct or 'ApprovalStructure'
 
             tables = db_manager.get_tables()
             for table_name in tables:
@@ -366,28 +367,38 @@ class IFCProcessor:
                 if not global_id:
                     continue
                 try:
+                    # Always use by_guid, which returns a list or single entity
                     entities = self.ifc_model.by_guid(global_id)
                     if not entities:
+                        logging.warning(f"No IFC entity found for GUID: {global_id}")
                         continue
-                    entity = entities if not isinstance(entities, list) else entities[0]
-
-                    # Write to Pset/param as selected by user (never write back status)
-                    try:
-                        psets = entity.get_psets() if hasattr(entity, 'get_psets') else {}
-                        pset = psets.get(pset_name)
-                        if not pset and hasattr(entity, 'add_property_set'):
-                            entity.add_property_set(pset_name)
-                            psets = entity.get_psets()
-                            pset = psets.get(pset_name)
-                        if pset is not None:
-                            # Write only approval values, never status
-                            if param_arch and 'ArchitectApproval' in row:
-                                pset[param_arch] = row['ArchitectApproval']
-                            if param_struct and 'StructuralApproval' in row:
-                                pset[param_struct] = row['StructuralApproval']
-                    except Exception as pset_error:
-                        logging.warning(f"Could not write to Pset: {str(pset_error)}")
-
+                    # If it's a list, update all; if single, wrap in list
+                    if not isinstance(entities, (list, tuple)):
+                        entities = [entities]
+                    for entity in entities:
+                        # Write to Pset/param as selected by user (never write back status)
+                        try:
+                            # Always create Pset if missing
+                            try:
+                                import ifcopenshell.api
+                                # Always use ifcopenshell.api to add the Pset robustly
+                                pset = ifcopenshell.api.run("pset.add_pset", self.ifc_model, product=entity, name=pset_name)
+                                properties_to_write = {}
+                                if param_arch and 'ArchitectApproval' in row:
+                                    properties_to_write[param_arch] = str(bool(row['ArchitectApproval']))
+                                if param_struct and 'StructuralApproval' in row:
+                                    properties_to_write[param_struct] = str(bool(row['StructuralApproval']))
+                                if properties_to_write and pset:
+                                    ifcopenshell.api.run("pset.edit_pset", self.ifc_model, pset=pset, properties=properties_to_write)
+                                    logging.info(f"Wrote approvals to entity {global_id} in Pset '{pset_name}' using ifcopenshell.api")
+                                else:
+                                    logging.warning(f"No approval properties to write or could not create/find Pset '{pset_name}' for entity {global_id}")
+                            except Exception as api_error:
+                                logging.warning(f"Could not write approvals to Pset for entity {global_id} using ifcopenshell.api: {str(api_error)}")
+                            else:
+                                logging.warning(f"Entity {global_id} has no get_psets method")
+                        except Exception as pset_error:
+                            logging.warning(f"Could not write to Pset for entity {global_id}: {str(pset_error)}")
                 except Exception as entity_error:
                     logging.warning(f"Could not find/update entity {global_id}: {str(entity_error)}")
                     continue
