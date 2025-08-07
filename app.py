@@ -258,9 +258,8 @@ def main():
         - **Upload multiple IFC files** containing {st.session_state.selected_element_type} objects
         - **Track object status** - automatically detects new and deleted objects between file versions
         - **Manage approvals** - track architect and structural engineer approvals based on your role
-        - **Cross-trade coordination** - view and manage objects from all trades in one unified database
         - **View history** - see when objects were added or deleted with timestamps from IFC file creation dates
-        - **Export database** - download the complete tracking database with all trades
+        - **Export database** - download the complete tracking database
         
         **Your role: {role_display}**
         - You can edit: {'Architect' if st.session_state.user_role == 'architect' else 'Structural Engineer'} approvals
@@ -324,7 +323,7 @@ def display_file_interface():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.subheader(f"📄 Multi-Trade IFC Database ({len(st.session_state.uploaded_files)} files)")
+        st.subheader(f"📄 IFC Database ({len(st.session_state.uploaded_files)} files)")
     
     with col2:
         if st.button("🔄 Refresh Data"):
@@ -338,11 +337,25 @@ def display_file_interface():
     # Get the main ifc_objects table
     try:
         df = st.session_state.db_manager.get_table_data('ifc_objects')
+        # Small number input above the table for row limit
+        row_limit = st.number_input(
+            "Rows to display",
+            min_value=10,
+            max_value=500,
+            value=50,
+            step=10,
+            key="row_limit_input",
+            help="Set how many rows to show in the main table (for performance)",
+            label_visibility="collapsed"
+        )
+        st.caption(f"Rows shown: {row_limit} (change above)")
+        # Limit display to user-selected number of rows
+        display_df = df.head(row_limit) if not df.empty else df
         
-        if df.empty:
+        if display_df.empty:
             st.info(f"No IFC objects found. Make sure your IFC file contains {element_type} objects.")
         else:
-            # Display summary statistics
+            # Display summary statistics (use full df for stats)
             col1, col2, col3, col4, col5, col6 = st.columns(6)
             with col1:
                 active_count = len(df[df['status'] == 'active']) if 'status' in df.columns else len(df)
@@ -368,9 +381,10 @@ def display_file_interface():
                 else:
                     st.metric("Structure Approved", "N/A")
             
-            # Display the table
-            display_ifc_objects_table(df)
-            
+            # Display the table (user-selected number of rows)
+            display_ifc_objects_table(display_df)
+            st.caption(f"Showing {len(display_df)} of {len(df)} total records")
+        
     except Exception as e:
         st.error(f"Error loading IFC objects: {str(e)}")
         # Fallback to show available tables
