@@ -48,7 +48,6 @@ Thumbs.db
 
 # Project specific
 *.ifc
-ifc_database.db
 *.log
 
 # Streamlit
@@ -59,6 +58,9 @@ ifc_database.db
 *.temp
 temp/
 tmp/
+
+# Sample files
+sample_files/
 
 # UV
 .venv/

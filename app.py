@@ -290,29 +290,34 @@ def process_uploaded_file(uploaded_file, original_filename):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file_path = tmp_file.name
-            
+
             # Initialize processor for this file
             processor = IFCProcessor(tmp_file_path)
-            
+
+            # Determine if we need to reset the database (no DB uploaded and this is the first IFC file)
+            uploaded_files_count = len(st.session_state.uploaded_files)
+            reset_db = (st.session_state.db_file_path is None) and (uploaded_files_count == 1)
+
             # Process the file with selected element type and original filename
             success = processor.load_ifc_to_database(
-                st.session_state.db_manager, 
+                st.session_state.db_manager,
                 st.session_state.selected_element_type,
-                original_filename
+                original_filename,
+                reset_database=reset_db
             )
-            
+
             # Store processor for this file
             if success:
                 st.session_state.processors[original_filename] = processor
-            
+
             if success:
                 st.success(f"✅ Successfully processed '{uploaded_file.name}'")
             else:
                 st.error(f"❌ Failed to process '{uploaded_file.name}'")
-            
+
             # Clean up temporary file
             os.unlink(tmp_file_path)
-            
+
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
 
@@ -337,18 +342,21 @@ def display_file_interface():
     # Get the main ifc_objects table
     try:
         df = st.session_state.db_manager.get_table_data('ifc_objects')
-        # Small number input above the table for row limit
-        row_limit = st.number_input(
-            "Rows to display",
-            min_value=10,
-            max_value=500,
-            value=50,
-            step=10,
-            key="row_limit_input",
-            help="Set how many rows to show in the main table (for performance)",
-            label_visibility="collapsed"
-        )
-        st.caption(f"Rows shown: {row_limit} (change above)")
+        # Small number input above the table for row limit, less wide
+        row_col, cap_col = st.columns([1, 5])
+        with row_col:
+            row_limit = st.number_input(
+                "Rows to display",
+                min_value=10,
+                max_value=500,
+                value=50,
+                step=10,
+                key="row_limit_input",
+                help="Set how many rows to show in the main table (for performance)",
+                label_visibility="collapsed"
+            )
+        with cap_col:
+            st.caption(f"Rows shown: {row_limit} (change above)")
         # Limit display to user-selected number of rows
         display_df = df.head(row_limit) if not df.empty else df
         
@@ -383,7 +391,6 @@ def display_file_interface():
             
             # Display the table (user-selected number of rows)
             display_ifc_objects_table(display_df)
-            st.caption(f"Showing {len(display_df)} of {len(df)} total records")
         
     except Exception as e:
         st.error(f"Error loading IFC objects: {str(e)}")
@@ -483,10 +490,26 @@ def display_ifc_objects_table(df):
                 key="ifc_objects_editor"
             )
             
-            # Save changes button
-            if st.button("💾 Save Changes to Database", type="primary"):
-                save_ifc_objects_changes(edited_df)
-            
+            # Save and Purge buttons in line with a spacer
+            btn_col1, btn_spacer, btn_col2 = st.columns([2, 0.2, 2])
+            with btn_col1:
+                if st.button("💾 Save Changes to Database", type="primary"):
+                    save_ifc_objects_changes(edited_df)
+            with btn_spacer:
+                st.write("")  # Spacer for visual separation
+            with btn_col2:
+                if st.button("🧹 Purge Deleted Objects from Database", help="Remove all objects marked as deleted from the database"):
+                    try:
+                        with st.spinner("Purging deleted objects..."):
+                            conn = st.session_state.db_manager.connection
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM ifc_objects WHERE status = 'deleted'")
+                            conn.commit()
+                        st.success("All deleted objects have been purged from the database.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error purging deleted objects: {str(e)}")
+
             # Show record count
             st.caption(f"Showing {len(filtered_df)} of {len(df)} total records")
             

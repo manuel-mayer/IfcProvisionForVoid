@@ -25,50 +25,63 @@ class IFCProcessor:
             logging.error(f"Failed to load IFC model: {str(e)}")
             raise Exception(f"Cannot open IFC file: {str(e)}")
     
-    def load_ifc_to_database(self, db_manager, element_type: str = "IfcVirtualElement", original_filename: str = None) -> bool:
-        """Extract IFC data and load it into SQLite database using your specific workflow"""
+    def load_ifc_to_database(self, db_manager, element_type: str = "IfcVirtualElement", original_filename: str = None, reset_database: bool = False) -> bool:
+        """Extract IFC data and load it into SQLite database using your specific workflow. If reset_database is True, clears the ifc_objects table first."""
         try:
             if not self.ifc_model:
                 return False
-            
+
             # Create the main tracking table based on your schema
             self._create_ifc_objects_table(db_manager)
-            
+
+            # If requested, clear the ifc_objects table for a fresh start
+            if reset_database:
+                self._clear_ifc_objects_table(db_manager)
+
             # Use the original filename if provided, otherwise extract from path
             if original_filename:
                 ifc_filename = original_filename
             else:
                 ifc_filename = os.path.basename(self.ifc_file_path)
-            
+
             ifc_creation_date = self._extract_creation_date()
-            
+
             # Extract elements of the specified type
             elements = self.ifc_model.by_type(element_type)
-            
+
             if not elements:
                 logging.warning(f"No {element_type} found in the IFC file")
                 # Still create empty tables for consistency
                 return True
-            
+
             # Process the elements using your workflow
             return self._process_elements(elements, ifc_filename, ifc_creation_date, db_manager, element_type)
-        
+
         except Exception as e:
             logging.error(f"Error loading IFC to database: {str(e)}")
             return False
-    
-    def _create_ifc_objects_table(self, db_manager):
-        """Create the ifc_objects table as per your schema"""
+    def _clear_ifc_objects_table(self, db_manager):
+        """Delete all rows from the ifc_objects table to ensure a fresh start."""
         try:
             connection = db_manager.connection
             cursor = connection.cursor()
-            
+            cursor.execute('DELETE FROM ifc_objects')
+            connection.commit()
+            logging.info("Cleared all rows from ifc_objects table (fresh start)")
+        except Exception as e:
+            logging.error(f"Error clearing ifc_objects table: {str(e)}")
+    
+    def _create_ifc_objects_table(self, db_manager):
+        """Create the ifc_objects table as per your schema, with BuildingStorey after filename"""
+        try:
+            connection = db_manager.connection
+            cursor = connection.cursor()
             cursor.execute('''CREATE TABLE IF NOT EXISTS ifc_objects
-                             (guid TEXT, filename TEXT, added_timestamp TEXT, status TEXT DEFAULT 'active',
+                             (guid TEXT, filename TEXT, BuildingStorey TEXT, added_timestamp TEXT, status TEXT DEFAULT 'active',
                               approval_architect BOOLEAN DEFAULT FALSE, approval_structure BOOLEAN DEFAULT FALSE,
                               deletion_date TEXT)''')
             connection.commit()
-            logging.info("Created ifc_objects table")
+            logging.info("Created ifc_objects table (BuildingStorey after filename)")
         except Exception as e:
             logging.error(f"Error creating ifc_objects table: {str(e)}")
     
@@ -96,60 +109,110 @@ class IFCProcessor:
             return None
     
     def _process_elements(self, elements, ifc_filename, ifc_creation_date, db_manager, element_type: str) -> bool:
-        """Process IFC elements using your workflow"""
+        """Process IFC elements using your workflow, now extracting BuildingStorey (after filename)"""
         try:
             connection = db_manager.connection
             cursor = connection.cursor()
-            
-            # Extract data from elements
+
+            # Extract data from elements, including BuildingStorey after filename
             updated_extracted_data = []
             for element in elements:
-                updated_extracted_data.append((element.GlobalId, ifc_filename))
-            
+                storey_name = self._get_building_storey_name(element)
+                updated_extracted_data.append((element.GlobalId, ifc_filename, storey_name))
+
             # Create set of GUIDs for efficient lookup
             updated_guids = set([item[0] for item in updated_extracted_data])
-            
+
             # Query existing data from database
             existing_data = {}
             cursor.execute("SELECT guid, status FROM ifc_objects WHERE filename = ?", (ifc_filename,))
             for row in cursor.fetchall():
                 existing_data[row[0]] = row[1]
-            
+
             logging.info(f"Found {len(existing_data)} existing objects in database for filename '{ifc_filename}'")
-            
+
             # Mark deleted objects
             if existing_data:
                 deleted_guids = []
                 deletion_timestamp = ifc_creation_date if ifc_creation_date else datetime.now().strftime('%y%m%d')
-                
+
                 for guid, status in existing_data.items():
                     if guid not in updated_guids and status == 'active':
                         deleted_guids.append(guid)
-                
+
                 if deleted_guids:
-                    cursor.executemany('UPDATE ifc_objects SET status = "deleted", deletion_date = ? WHERE guid = ?', 
+                    cursor.executemany('UPDATE ifc_objects SET status = "deleted", deletion_date = ? WHERE guid = ?',
                                      [(deletion_timestamp, guid) for guid in deleted_guids])
                     logging.info(f"Marked {len(deleted_guids)} objects as 'deleted'")
-            
+
             # Add new objects
             existing_guids_set = set(existing_data.keys())
             new_objects_to_add = []
             added_timestamp = ifc_creation_date if ifc_creation_date else datetime.now().strftime('%y%m%d')
-            
-            for guid, filename in updated_extracted_data:
+
+            for guid, filename, storey_name in updated_extracted_data:
                 if guid not in existing_guids_set:
-                    new_objects_to_add.append((guid, filename, added_timestamp, 'active', False, False, None))
-            
+                    new_objects_to_add.append((guid, filename, storey_name, added_timestamp, 'active', False, False, None))
+
             if new_objects_to_add:
-                cursor.executemany('INSERT INTO ifc_objects VALUES (?,?,?,?,?,?,?)', new_objects_to_add)
-                logging.info(f"Added {len(new_objects_to_add)} new objects to database")
-            
+                cursor.executemany('INSERT INTO ifc_objects VALUES (?,?,?,?,?,?,?,?)', new_objects_to_add)
+                logging.info(f"Added {len(new_objects_to_add)} new objects to database (BuildingStorey after filename)")
+
             connection.commit()
             return True
-            
+
         except Exception as e:
             logging.error(f"Error processing virtual elements: {str(e)}")
             return False
+
+    def _get_building_storey_name(self, element):
+        """Find the building storey name for a given IFC element (returns name or None)"""
+        try:
+            # Try spatial containment first (IfcRelContainedInSpatialStructure)
+            if hasattr(element, 'ContainedInStructure') and element.ContainedInStructure:
+                rels = element.ContainedInStructure
+                if not isinstance(rels, (list, tuple)):
+                    rels = [rels]
+                for rel in rels:
+                    if hasattr(rel, 'RelatingStructure'):
+                        struct = rel.RelatingStructure
+                        # Walk up the spatial structure tree
+                        while struct:
+                            if struct.is_a('IfcBuildingStorey'):
+                                return getattr(struct, 'Name', None)
+                            # Go up to parent spatial structure
+                            if hasattr(struct, 'Decomposes') and struct.Decomposes:
+                                parent_rel = struct.Decomposes[0] if isinstance(struct.Decomposes, list) else struct.Decomposes
+                                if hasattr(parent_rel, 'RelatingObject'):
+                                    struct = parent_rel.RelatingObject
+                                else:
+                                    break
+                            else:
+                                break
+            # Try decomposition (for elements that are part of an aggregate)
+            if hasattr(element, 'Decomposes') and element.Decomposes:
+                rels = element.Decomposes
+                if not isinstance(rels, (list, tuple)):
+                    rels = [rels]
+                for rel in rels:
+                    if hasattr(rel, 'RelatingObject'):
+                        parent = rel.RelatingObject
+                        # Walk up the decomposition tree
+                        while parent:
+                            if parent.is_a('IfcBuildingStorey'):
+                                return getattr(parent, 'Name', None)
+                            if hasattr(parent, 'Decomposes') and parent.Decomposes:
+                                parent_rel = parent.Decomposes[0] if isinstance(parent.Decomposes, list) else parent.Decomposes
+                                if hasattr(parent_rel, 'RelatingObject'):
+                                    parent = parent_rel.RelatingObject
+                                else:
+                                    break
+                            else:
+                                break
+            return None
+        except Exception as e:
+            logging.warning(f"Could not extract building storey: {str(e)}")
+            return None
     
     def _process_entity_group(self, entity_type: str, entities: list, db_manager):
         """Process a group of entities of the same type"""
