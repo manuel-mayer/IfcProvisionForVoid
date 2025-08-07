@@ -172,10 +172,62 @@ def main():
         if st.session_state.uploaded_files:
             st.markdown("---")
             st.subheader("Export")
-            if st.button("📊 Download SQLite Database"):
+            # .db download button
+            if st.button("📊 Download Database (.db)", help="Download the SQLite database containing the extracted IFC data"):
                 download_database()
-            if st.button("📋 Export Database as Excel"):
-                download_excel_database()
+            # Excel download button (streamlined, always visible)
+            # Generate Excel in memory and show download button
+            try:
+                df = st.session_state.db_manager.get_table_data('ifc_objects')
+                if not df.empty:
+                    from io import BytesIO
+                    import pandas as pd
+                    excel_buffer = BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name='IFC_Objects', index=False)
+                        # Auto-adjust column widths
+                        worksheet = writer.sheets['IFC_Objects']
+                        for column in worksheet.columns:
+                            max_length = 0
+                            column_letter = column[0].column_letter
+                            for cell in column:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(str(cell.value))
+                                except:
+                                    pass
+                            adjusted_width = min(max_length + 2, 50)
+                            worksheet.column_dimensions[column_letter].width = adjusted_width
+                        # Add a summary sheet
+                        summary_data = {
+                            'Metric': ['Total Objects', 'Active Objects', 'Deleted Objects', 
+                                      'Architect Approved', 'Structure Approved', 'IFC Files'],
+                            'Count': [
+                                len(df),
+                                len(df[df['status'] == 'active']) if 'status' in df.columns else len(df),
+                                len(df[df['status'] == 'deleted']) if 'status' in df.columns else 0,
+                                len(df[df['approval_architect'] == True]) if 'approval_architect' in df.columns else 0,
+                                len(df[df['approval_structure'] == True]) if 'approval_structure' in df.columns else 0,
+                                df['filename'].nunique() if 'filename' in df.columns else 1
+                            ]
+                        }
+                        summary_df = pd.DataFrame(summary_data)
+                        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                    excel_buffer.seek(0)
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"IFC_Database_{timestamp}.xlsx"
+                    st.download_button(
+                        label="📋 Download Database as Excel (.xlsx)",
+                        data=excel_buffer.getvalue(),
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Download the database as an Excel spreadsheet for easy review"
+                    )
+                else:
+                    st.info("No data found in database to export as Excel.")
+            except Exception as e:
+                st.error(f"Error preparing Excel file: {str(e)}")
     
     # Main content area
     if not st.session_state.uploaded_files:
