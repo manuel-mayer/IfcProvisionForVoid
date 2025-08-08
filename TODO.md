@@ -1,5 +1,6 @@
 # TODO List for IfcProvisionForVoid
 
+- [ ] uploading database has to trigger database view like ifc upload does
 - [ ] investigate bug: new ifc doesn't get pulled into existing database
 - [x] match ifcGuid across different file names, so no duplicated Guids
 - [x] give user options for pset and parameter names when database is written back to ifc
