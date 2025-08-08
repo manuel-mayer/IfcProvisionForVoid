@@ -21,6 +21,6 @@ separate app perhaps: provisionforvoids need to know if structurally relevant
 - [ ] bbox center point inside aligned boundingbox of structural elements: walls, slabs, beams
 - [ ] output just structural host= true/false or void host= IfcWall: LoadBearing and IfcWall
 - [ ] check possible attributes and useful combinations:
-      - Void Host             = IfcWall - B_W_I_0,3 - Loadbearing
-      - Void Host Material    = 01_Stahlbeton
-      - Void Host Firerating  = EI 60
+      - [ ] Void Host             = IfcWall - B_W_I_0,3 - Loadbearing
+      - [ ] Void Host Material    = 01_Stahlbeton
+      - [ ] Void Host Firerating  = EI 60
