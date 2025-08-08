@@ -1,5 +1,6 @@
 # TODO List for IfcProvisionForVoid
 
+- [ ] investigate bug: new ifc doesn't get pulled into existing database
 - [x] match ifcGuid across different file names, so no duplicated Guids
 - [x] give user options for pset and parameter names when database is written back to ifc
 - [x] write building storey to the database after filename
@@ -19,4 +20,7 @@
 separate app perhaps: provisionforvoids need to know if structurally relevant
 - [ ] bbox center point inside aligned boundingbox of structural elements: walls, slabs, beams
 - [ ] output just structural host= true/false or void host= IfcWall: LoadBearing and IfcWall
-- [ ] bonus: write wall material to provision for void for tendering quantification
+- [ ] check possible attributes and useful combinations:
+      - Void Host             = IfcWall - B_W_I_0,3 - Loadbearing
+      - Void Host Material    = 01_Stahlbeton
+      - Void Host Firerating  = EI 60
