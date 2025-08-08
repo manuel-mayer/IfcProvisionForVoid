@@ -10,7 +10,7 @@
 - [x] test pset and attribute name for writeback
 - [ ] test with multiple ifc files for H,L,S,E
 - [ ] test with existing database, multiple iterations
-- [ ] test ifc2x3, ifc4 and ifc4x3
+- [x] test ifc2x3, ifc4 and ifc4x3
 - [ ] test with bigger project > 500 objects
 - [ ] check hosting options for database
 - [ ] check import export options for revit with dynamo for approval status
