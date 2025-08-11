@@ -2,6 +2,9 @@
 
 A web application for processing and managing IFC ProvisionForVoids. This tool allows architects and structural engineers to upload IFC files, extract building elements, track changes, and manage approvals in a collaborative workflow.
 
+## Disclaimer
+**This workflow is work-in-progess and not yet ready for real world projects!**
+
 ## Features
 
 - **Multi-File Support**: Upload and process IFC files from different trades
